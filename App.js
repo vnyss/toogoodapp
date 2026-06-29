@@ -15,25 +15,31 @@ import ExerciseScreen  from './src/screens/ExerciseScreen';
 import CalendarScreen  from './src/screens/CalendarScreen';
 import DiaryScreen     from './src/screens/DiaryScreen';
 import ScoreScreen     from './src/screens/ScoreScreen';
-import SocialsScreen   from './src/screens/SocialsScreen';
-import ProfileScreen   from './src/screens/ProfileScreen';
-import MonitorScreen   from './src/screens/MonitorScreen';
-import SettingsScreen  from './src/screens/SettingsScreen';
+import SocialsScreen    from './src/screens/SocialsScreen';
+import ProfileScreen    from './src/screens/ProfileScreen';
+import MonitorScreen    from './src/screens/MonitorScreen';
+import SettingsScreen   from './src/screens/SettingsScreen';
+import ChallengesScreen from './src/screens/ChallengesScreen';
+import ClubsScreen      from './src/screens/ClubsScreen';
+import SegmentsScreen   from './src/screens/SegmentsScreen';
 
 const SCREENS = {
-  dashboard: DashboardScreen,
-  ai:        AIScreen,
-  log:       LogScreen,
-  adapt:     AdaptScreen,
-  coach:     CoachScreen,
-  exercise:  ExerciseScreen,
-  calendar:  CalendarScreen,
-  diary:     DiaryScreen,
-  score:     ScoreScreen,
-  socials:   SocialsScreen,
-  profile:   ProfileScreen,
-  monitor:   MonitorScreen,
-  settings:  SettingsScreen,
+  dashboard:  DashboardScreen,
+  ai:         AIScreen,
+  log:        LogScreen,
+  adapt:      AdaptScreen,
+  coach:      CoachScreen,
+  exercise:   ExerciseScreen,
+  calendar:   CalendarScreen,
+  diary:      DiaryScreen,
+  score:      ScoreScreen,
+  socials:    SocialsScreen,
+  profile:    ProfileScreen,
+  monitor:    MonitorScreen,
+  settings:   SettingsScreen,
+  challenges: ChallengesScreen,
+  clubs:      ClubsScreen,
+  segments:   SegmentsScreen,
 };
 
 /* ── SVG icons matching the website ── */
@@ -51,8 +57,11 @@ function Icon({ name, size = 14, color }) {
   if (name === 'score')     return <Svg {...p}><Polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></Svg>;
   if (name === 'socials')   return <Svg {...p}><Path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><Circle cx={9} cy={7} r={4} /><Path d="M23 21v-2a4 4 0 0 0-3-3.87" /><Path d="M16 3.13a4 4 0 0 1 0 7.75" /></Svg>;
   if (name === 'profile')   return <Svg {...p}><Circle cx={12} cy={8} r={4} /><Path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></Svg>;
-  if (name === 'monitor')   return <Svg {...p}><Path d="M22 12h-4l-3 9L9 3l-3 9H2" /></Svg>;
-  if (name === 'settings')  return <Svg {...p}><Circle cx={12} cy={12} r={3} /><Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></Svg>;
+  if (name === 'monitor')    return <Svg {...p}><Path d="M22 12h-4l-3 9L9 3l-3 9H2" /></Svg>;
+  if (name === 'settings')   return <Svg {...p}><Circle cx={12} cy={12} r={3} /><Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></Svg>;
+  if (name === 'challenges') return <Svg {...p}><Path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><Path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><Path d="M4 22h16" /><Path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" /><Path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" /><Path d="M18 2H6v7a6 6 0 0 0 12 0V2z" /></Svg>;
+  if (name === 'clubs')      return <Svg {...p}><Path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><Circle cx={9} cy={7} r={4} /><Path d="M23 21v-2a4 4 0 0 0-3-3.87" /><Path d="M16 3.13a4 4 0 0 1 0 7.75" /></Svg>;
+  if (name === 'segments')   return <Svg {...p}><Path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><Line x1={4} y1={22} x2={4} y2={15} /></Svg>;
   return null;
 }
 
@@ -117,6 +126,12 @@ function Sidebar({ screen, navigate, username, onLogout }) {
         {/* Score has a top separator */}
         <View style={sb.scoreSep} />
         <NavItem navKey="score"    label="Score"             iconName="score"    active={screen === 'score'}    onPress={navigate} />
+
+        {/* Compete section */}
+        <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Compete</Text>
+        <NavItem navKey="challenges" label="Challenges" iconName="challenges" active={screen === 'challenges'} onPress={navigate} />
+        <NavItem navKey="clubs"      label="Clubs"      iconName="clubs"      active={screen === 'clubs'}      onPress={navigate} />
+        <NavItem navKey="segments"   label="Segments"   iconName="segments"   active={screen === 'segments'}   onPress={navigate} />
 
         {/* Social section */}
         <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Social</Text>
