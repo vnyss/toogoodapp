@@ -133,7 +133,7 @@ function FlameLogo() {
 }
 
 /* ── Nav item ── */
-function NavItem({ navKey, label, iconName, active, onPress, sub }) {
+function NavItem({ navKey, label, iconName, active, onPress }) {
   const { mc, accentColor, accentDim } = useTheme();
   return (
     <TouchableOpacity
@@ -148,12 +148,52 @@ function NavItem({ navKey, label, iconName, active, onPress, sub }) {
   );
 }
 
-/* ── Sidebar — matches _sidebar.html exactly ── */
+/* ── Collapsible section header ── */
+function SectionHeader({ label, open, onToggle, hasActive }) {
+  const { mc, accentColor } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onToggle}
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 14, paddingBottom: 4 }}
+      activeOpacity={0.7}
+    >
+      <Text style={[sb.sectionLabel, { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, color: hasActive ? accentColor : mc.text3 }]}>{label}</Text>
+      <Text style={{ fontFamily: "'Courier Prime', monospace", fontSize: 14, color: hasActive ? accentColor : mc.text3, paddingRight: 4 }}>{open ? '−' : '+'}</Text>
+    </TouchableOpacity>
+  );
+}
+
+/* ── Sidebar ── */
 function Sidebar({ screen, navigate, username, onLogout, userGender }) {
   const { mc, accentColor, accentDim } = useTheme();
+
+  // which sections are expanded — Navigation always open, others default collapsed
+  const [open, setOpen] = React.useState({
+    nav: true, fitness: false, health: false, nutrition: false,
+    gym: false, compete: false, social: false,
+  });
+
+  // auto-expand the section containing the active screen
+  React.useEffect(() => {
+    const sectionOf = {
+      dashboard: 'nav', ai: 'nav', log: 'nav', adapt: 'nav',
+      coach: 'fitness', exercise: 'fitness', calendar: 'fitness', diary: 'fitness', score: 'fitness',
+      steps: 'health', water: 'health', sleep: 'health', monitor: 'health', bmi: 'health', healthrisk: 'health', reminders: 'health', period: 'health',
+      nutrients: 'nutrition', recipe: 'nutrition', mealplan: 'nutrition', fasting: 'nutrition', transformation: 'nutrition',
+      workout: 'gym', guidedworkout: 'gym', programs: 'gym', hiittimer: 'gym', exerciselibrary: 'gym', gymprogress: 'gym', gymtools: 'gym',
+      challenges: 'compete', clubs: 'compete', segments: 'compete',
+      socials: 'social', profile: 'social',
+    };
+    const sec = sectionOf[screen];
+    if (sec && !open[sec]) setOpen(prev => ({ ...prev, [sec]: true }));
+  }, [screen]);
+
+  function toggle(key) { setOpen(prev => ({ ...prev, [key]: !prev[key] })); }
+
+  function inSection(keys) { return keys.includes(screen); }
+
   return (
     <View style={[sb.sidebar, { backgroundColor: mc.sidebar, borderRightColor: mc.border }]}>
-      {/* .sb-top */}
       <View style={sb.top}>
         <TouchableOpacity style={sb.brand} onPress={() => navigate('dashboard')}>
           <FlameLogo />
@@ -164,74 +204,94 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
         </TouchableOpacity>
       </View>
 
-      {/* .sb-nav */}
       <ScrollView style={sb.nav} showsVerticalScrollIndicator={false}>
 
-        {/* Navigation section */}
+        {/* ── Navigation (always visible, no collapse) ── */}
         <Text style={[sb.sectionLabel, { color: mc.text3 }]}>Navigation</Text>
         <NavItem navKey="dashboard" label="Dashboard" iconName="dashboard" active={screen === 'dashboard'} onPress={navigate} />
-        <NavItem navKey="ai"        label="AI"         iconName="ai"        active={screen === 'ai'}        onPress={navigate} />
+        <NavItem navKey="ai"        label="AI Coach"   iconName="ai"        active={screen === 'ai'}        onPress={navigate} />
         <NavItem navKey="log"       label="Log Today"  iconName="log"       active={screen === 'log'}       onPress={navigate} />
         <NavItem navKey="adapt"     label="TG·Adapt"   iconName="adapt"     active={screen === 'adapt'}     onPress={navigate} />
 
-        {/* Fitness section */}
-        <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Fitness</Text>
-        <NavItem navKey="coach"    label="Coach"             iconName="coach"    active={screen === 'coach'}    onPress={navigate} />
-        <NavItem navKey="exercise" label="Exercise Schedule" iconName="exercise" active={screen === 'exercise'} onPress={navigate} />
-        <NavItem navKey="calendar" label="Calendar"          iconName="calendar" active={screen === 'calendar'} onPress={navigate} />
-        <NavItem navKey="diary"    label="Daily Diary"       iconName="diary"    active={screen === 'diary'}    onPress={navigate} />
-        {/* Score has a top separator */}
-        <View style={sb.scoreSep} />
-        <NavItem navKey="score"    label="Score"             iconName="score"    active={screen === 'score'}    onPress={navigate} />
-
-        {/* Gym section */}
-        <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Gym</Text>
-        <NavItem navKey="workout"         label="Workout Tracker"   iconName="workout"         active={screen === 'workout'}         onPress={navigate} />
-        <NavItem navKey="guidedworkout"   label="Guided Workouts"   iconName="guidedworkout"   active={screen === 'guidedworkout'}   onPress={navigate} />
-        <NavItem navKey="programs"        label="Programs & Plans"  iconName="programs"        active={screen === 'programs'}        onPress={navigate} />
-        <NavItem navKey="hiittimer"       label="HIIT Timer"        iconName="hiittimer"       active={screen === 'hiittimer'}       onPress={navigate} />
-        <NavItem navKey="exerciselibrary" label="Exercise Library"  iconName="exerciselibrary" active={screen === 'exerciselibrary'} onPress={navigate} />
-        <NavItem navKey="gymprogress"     label="Gym Progress"      iconName="gymprogress"     active={screen === 'gymprogress'}     onPress={navigate} />
-        <NavItem navKey="gymtools"        label="Gym Tools"         iconName="gymtools"        active={screen === 'gymtools'}        onPress={navigate} />
-
-        {/* Compete section */}
-        <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Compete</Text>
-        <NavItem navKey="challenges" label="Challenges" iconName="challenges" active={screen === 'challenges'} onPress={navigate} />
-        <NavItem navKey="clubs"      label="Clubs"      iconName="clubs"      active={screen === 'clubs'}      onPress={navigate} />
-        <NavItem navKey="segments"   label="Segments"   iconName="segments"   active={screen === 'segments'}   onPress={navigate} />
-
-        {/* Social section */}
-        <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Social</Text>
-        <NavItem navKey="socials" label="Socials"    iconName="socials" active={screen === 'socials'} onPress={navigate} />
-        <NavItem navKey="profile" label="My Profile" iconName="profile" active={screen === 'profile'} onPress={navigate} />
-
-        {/* Health section */}
-        <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Health</Text>
-        <NavItem navKey="steps"          label="Step Tracker"     iconName="steps"          active={screen === 'steps'}          onPress={navigate} />
-        <NavItem navKey="water"          label="Water Tracker"    iconName="water"          active={screen === 'water'}          onPress={navigate} />
-        <NavItem navKey="sleep"          label="Sleep Tracker"    iconName="sleep"          active={screen === 'sleep'}          onPress={navigate} />
-        <NavItem navKey="monitor"        label="Blood Monitor"    iconName="monitor"        active={screen === 'monitor'}        onPress={navigate} />
-        <NavItem navKey="bmi"            label="BMI & Metrics"    iconName="bmi"            active={screen === 'bmi'}            onPress={navigate} />
-        <NavItem navKey="healthrisk"     label="Health Risk"      iconName="healthrisk"     active={screen === 'healthrisk'}     onPress={navigate} />
-        <NavItem navKey="reminders"      label="Reminders"        iconName="reminders"      active={screen === 'reminders'}      onPress={navigate} />
-        {(userGender === 'female' || userGender === '') && (
-          <NavItem navKey="period" label="Period Tracker" iconName="period" active={screen === 'period'} onPress={navigate} />
+        {/* ── Fitness ── */}
+        <SectionHeader label="Fitness" open={open.fitness} onToggle={() => toggle('fitness')} hasActive={inSection(['coach','exercise','calendar','diary','score'])} />
+        {open.fitness && (
+          <>
+            <NavItem navKey="coach"    label="Coach"             iconName="coach"    active={screen === 'coach'}    onPress={navigate} />
+            <NavItem navKey="exercise" label="Exercise Schedule" iconName="exercise" active={screen === 'exercise'} onPress={navigate} />
+            <NavItem navKey="calendar" label="Calendar"          iconName="calendar" active={screen === 'calendar'} onPress={navigate} />
+            <NavItem navKey="diary"    label="Daily Diary"       iconName="diary"    active={screen === 'diary'}    onPress={navigate} />
+            <NavItem navKey="score"    label="Score"             iconName="score"    active={screen === 'score'}    onPress={navigate} />
+          </>
         )}
 
-        {/* Nutrition section */}
-        <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Nutrition</Text>
-        <NavItem navKey="nutrients"      label="Nutrients"        iconName="nutrients"      active={screen === 'nutrients'}      onPress={navigate} />
-        <NavItem navKey="recipe"         label="Recipe Builder"   iconName="recipe"         active={screen === 'recipe'}         onPress={navigate} />
-        <NavItem navKey="mealplan"       label="Meal Plan"        iconName="mealplan"       active={screen === 'mealplan'}       onPress={navigate} />
-        <NavItem navKey="fasting"        label="Fasting Tracker"  iconName="fasting"        active={screen === 'fasting'}        onPress={navigate} />
-        <NavItem navKey="transformation" label="Transformation"   iconName="transformation" active={screen === 'transformation'} onPress={navigate} />
+        {/* ── Health ── */}
+        <SectionHeader label="Health" open={open.health} onToggle={() => toggle('health')} hasActive={inSection(['steps','water','sleep','monitor','bmi','healthrisk','reminders','period'])} />
+        {open.health && (
+          <>
+            <NavItem navKey="steps"      label="Step Tracker"   iconName="steps"      active={screen === 'steps'}      onPress={navigate} />
+            <NavItem navKey="water"      label="Water Tracker"  iconName="water"      active={screen === 'water'}      onPress={navigate} />
+            <NavItem navKey="sleep"      label="Sleep Tracker"  iconName="sleep"      active={screen === 'sleep'}      onPress={navigate} />
+            <NavItem navKey="monitor"    label="Blood Monitor"  iconName="monitor"    active={screen === 'monitor'}    onPress={navigate} />
+            <NavItem navKey="bmi"        label="BMI & Metrics"  iconName="bmi"        active={screen === 'bmi'}        onPress={navigate} />
+            <NavItem navKey="healthrisk" label="Health Risk"    iconName="healthrisk" active={screen === 'healthrisk'} onPress={navigate} />
+            <NavItem navKey="reminders"  label="Reminders"      iconName="reminders"  active={screen === 'reminders'}  onPress={navigate} />
+            {(userGender === 'female' || userGender === '') && (
+              <NavItem navKey="period"   label="Period Tracker" iconName="period"     active={screen === 'period'}     onPress={navigate} />
+            )}
+          </>
+        )}
 
-        {/* Settings — outside sections, before .sb-bottom */}
-        <View style={sb.settingsSep} />
+        {/* ── Nutrition ── */}
+        <SectionHeader label="Nutrition" open={open.nutrition} onToggle={() => toggle('nutrition')} hasActive={inSection(['nutrients','recipe','mealplan','fasting','transformation'])} />
+        {open.nutrition && (
+          <>
+            <NavItem navKey="nutrients"      label="Nutrients"       iconName="nutrients"      active={screen === 'nutrients'}      onPress={navigate} />
+            <NavItem navKey="recipe"         label="Recipe Builder"  iconName="recipe"         active={screen === 'recipe'}         onPress={navigate} />
+            <NavItem navKey="mealplan"       label="Meal Plan"       iconName="mealplan"       active={screen === 'mealplan'}       onPress={navigate} />
+            <NavItem navKey="fasting"        label="Fasting Tracker" iconName="fasting"        active={screen === 'fasting'}        onPress={navigate} />
+            <NavItem navKey="transformation" label="Transformation"  iconName="transformation" active={screen === 'transformation'} onPress={navigate} />
+          </>
+        )}
+
+        {/* ── Gym ── */}
+        <SectionHeader label="Gym" open={open.gym} onToggle={() => toggle('gym')} hasActive={inSection(['workout','guidedworkout','programs','hiittimer','exerciselibrary','gymprogress','gymtools'])} />
+        {open.gym && (
+          <>
+            <NavItem navKey="workout"         label="Workout Tracker"  iconName="workout"         active={screen === 'workout'}         onPress={navigate} />
+            <NavItem navKey="guidedworkout"   label="Guided Workouts"  iconName="guidedworkout"   active={screen === 'guidedworkout'}   onPress={navigate} />
+            <NavItem navKey="programs"        label="Programs & Plans" iconName="programs"        active={screen === 'programs'}        onPress={navigate} />
+            <NavItem navKey="hiittimer"       label="HIIT Timer"       iconName="hiittimer"       active={screen === 'hiittimer'}       onPress={navigate} />
+            <NavItem navKey="exerciselibrary" label="Exercise Library" iconName="exerciselibrary" active={screen === 'exerciselibrary'} onPress={navigate} />
+            <NavItem navKey="gymprogress"     label="Gym Progress"     iconName="gymprogress"     active={screen === 'gymprogress'}     onPress={navigate} />
+            <NavItem navKey="gymtools"        label="Gym Tools"        iconName="gymtools"        active={screen === 'gymtools'}        onPress={navigate} />
+          </>
+        )}
+
+        {/* ── Compete ── */}
+        <SectionHeader label="Compete" open={open.compete} onToggle={() => toggle('compete')} hasActive={inSection(['challenges','clubs','segments'])} />
+        {open.compete && (
+          <>
+            <NavItem navKey="challenges" label="Challenges" iconName="challenges" active={screen === 'challenges'} onPress={navigate} />
+            <NavItem navKey="clubs"      label="Clubs"      iconName="clubs"      active={screen === 'clubs'}      onPress={navigate} />
+            <NavItem navKey="segments"   label="Segments"   iconName="segments"   active={screen === 'segments'}   onPress={navigate} />
+          </>
+        )}
+
+        {/* ── Social — just above Settings ── */}
+        <View style={[sb.settingsSep, { marginTop: 8 }]} />
+        <SectionHeader label="Social" open={open.social} onToggle={() => toggle('social')} hasActive={inSection(['socials','profile'])} />
+        {open.social && (
+          <>
+            <NavItem navKey="socials" label="Socials"    iconName="socials" active={screen === 'socials'} onPress={navigate} />
+            <NavItem navKey="profile" label="My Profile" iconName="profile" active={screen === 'profile'} onPress={navigate} />
+          </>
+        )}
+
         <NavItem navKey="settings" label="Settings" iconName="settings" active={screen === 'settings'} onPress={navigate} />
+        <View style={{ height: 16 }} />
       </ScrollView>
 
-      {/* .sb-bottom — profile */}
       <View style={[sb.bottom, { borderTopColor: mc.border }]}>
         <TouchableOpacity style={sb.profileBtn} onPress={() => navigate('profile')}>
           <View style={[sb.avatar, { backgroundColor: accentDim, borderColor: mc.borderH }]}>
