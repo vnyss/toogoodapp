@@ -6,7 +6,8 @@ import {
 import Svg, { Path, Line } from 'react-native-svg';
 import { C, F } from '../theme';
 import { useTheme } from '../ThemeContext';
-import { aiChat, fetchLogs, syncLogs, awardXP } from '../api';
+import { aiChat, fetchLogs, syncLogs, awardXP, lookupBarcode } from '../api';
+import BarcodeScanner from '../components/BarcodeScanner';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getToken, getUser } from '../auth';
 
@@ -112,6 +113,10 @@ export default function LogScreen({ navigation }) {
   const [afServing,   setAfServing]   = useState('');
   const [afProtein,   setAfProtein]   = useState('');
   const [afCarbs,     setAfCarbs]     = useState('');
+
+  // Barcode scanner
+  const [showScanner,   setShowScanner]   = useState(false);
+  const [scanLoading,   setScanLoading]   = useState(false);
 
   // AI assistant
   const [asstOpen,    setAsstOpen]    = useState(true);
@@ -233,6 +238,25 @@ export default function LogScreen({ navigation }) {
     setAfName(''); setAfCal(''); setAfServing('');
     setAfProtein(''); setAfCarbs('');
     setShowFood(true);
+  }
+
+  async function handleScanned(code) {
+    setShowScanner(false);
+    setScanLoading(true);
+    try {
+      const p = await lookupBarcode(code);
+      setAfName(p.brand ? `${p.name} (${p.brand})` : p.name);
+      setAfCal(String(p.calories));
+      setAfServing(p.serving);
+      setAfProtein(String(p.protein));
+      setAfCarbs(String(p.carbs));
+      setShowFood(true);
+    } catch {
+      setAfName(''); setAfCal(''); setAfServing(''); setAfProtein(''); setAfCarbs('');
+      setShowFood(true);
+    } finally {
+      setScanLoading(false);
+    }
   }
 
   function submitAddFood() {
@@ -689,6 +713,9 @@ export default function LogScreen({ navigation }) {
                 <PlusSvg color={mc.text2} />
                 <Text style={st.foodBtnTxt}>Add food</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={st.foodBtn} onPress={() => setShowScanner(true)} disabled={scanLoading}>
+                <Text style={st.foodBtnTxt}>{scanLoading ? 'Looking up…' : '▦  Scan barcode'}</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Log footer — .log-footer */}
@@ -797,6 +824,12 @@ export default function LogScreen({ navigation }) {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      <BarcodeScanner
+        visible={showScanner}
+        onScanned={handleScanned}
+        onClose={() => setShowScanner(false)}
+      />
 
     </ScrollView>
   );

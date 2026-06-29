@@ -6,7 +6,8 @@ import {
 import Svg, { Path, Line, Rect, Circle, Polyline, Polygon } from 'react-native-svg';
 import { C, F, S } from '../theme';
 import { useTheme } from '../ThemeContext';
-import { generalAiChat, getSessions, saveSessions, banComment } from '../api';
+import { generalAiChat, getSessions, saveSessions, banComment, lookupBarcode } from '../api';
+import BarcodeScanner from '../components/BarcodeScanner';
 import { getToken, getUser } from '../auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -567,6 +568,7 @@ export default function AIScreen({ navigation }) {
   const [roastText,  setRoastText]  = useState('');
   const [listening,  setListening]  = useState(false);
   const [showPlus,   setShowPlus]   = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [showMCQ,    setShowMCQ]    = useState(false);
   const [wizardShown, setWizardShown] = useState(false);
   const [funnyIdx,   setFunnyIdx]   = useState(0);
@@ -604,6 +606,19 @@ export default function AIScreen({ navigation }) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showPlus]);
+
+  // ── Barcode scan handler ──────────────────────────────────────────
+
+  async function handleScanned(code) {
+    setShowScanner(false);
+    try {
+      const p = await lookupBarcode(code);
+      const brand = p.brand ? ` by ${p.brand}` : '';
+      setInput(`I scanned ${p.name}${brand}. Per 100g: ${p.calories} kcal, ${p.protein}g protein, ${p.carbs}g carbs, ${p.fat}g fat (serving: ${p.serving}). Can you help me log this and tell me if it fits my goals?`);
+    } catch {
+      setInput(`I scanned barcode ${code} but couldn't find it in the database. Can you help me log it manually?`);
+    }
+  }
 
   // ── Funny ticker while loading ────────────────────────────────────
 
@@ -1718,7 +1733,7 @@ export default function AIScreen({ navigation }) {
                     </TouchableOpacity>
                     {showPlus && (
                       <View style={st.plusPopup}>
-                        <TouchableOpacity style={st.plusItem} onPress={() => setShowPlus(false)}>
+                        <TouchableOpacity style={st.plusItem} onPress={() => { setShowPlus(false); setShowScanner(true); }}>
                           <Text style={st.plusItemTxt}>Scan barcode</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={st.plusItem} onPress={() => setShowPlus(false)}>
@@ -1771,6 +1786,13 @@ export default function AIScreen({ navigation }) {
         mc={mc}
         accentColor={accentColor}
         st={st}
+      />
+
+      {/* Barcode Scanner */}
+      <BarcodeScanner
+        visible={showScanner}
+        onScanned={handleScanned}
+        onClose={() => setShowScanner(false)}
       />
 
       {/* Ban Overlay */}

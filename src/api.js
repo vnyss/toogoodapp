@@ -88,3 +88,22 @@ export const syncLogs  = (logs)  => post('/perfect/api/daily-logs', { logs });
 // Email / reminders
 export const forgotPassword  = (email)         => post('/api/v1/forgot-password', { email });
 export const calendarRemind  = (date, blocks)  => post('/perfect/api/calendar/remind', { date, blocks });
+
+// Barcode lookup via Open Food Facts (no API key needed)
+export async function lookupBarcode(code) {
+  const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
+  if (!res.ok) throw new Error('Not found');
+  const data = await res.json();
+  if (!data.product) throw new Error('Product not found');
+  const p = data.product;
+  const n = p.nutriments || {};
+  return {
+    name:     p.product_name || p.product_name_en || 'Unknown product',
+    brand:    p.brands || '',
+    serving:  p.serving_size || '100g',
+    calories: Math.round(n['energy-kcal_100g'] || n['energy-kcal'] || 0),
+    protein:  Math.round(n.proteins_100g  || 0),
+    carbs:    Math.round(n.carbohydrates_100g || 0),
+    fat:      Math.round(n.fat_100g || 0),
+  };
+}
