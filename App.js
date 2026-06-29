@@ -22,7 +22,11 @@ import SettingsScreen   from './src/screens/SettingsScreen';
 import ChallengesScreen    from './src/screens/ChallengesScreen';
 import ClubsScreen         from './src/screens/ClubsScreen';
 import SegmentsScreen      from './src/screens/SegmentsScreen';
-import FastingScreen       from './src/screens/FastingScreen';
+import WorkoutScreen        from './src/screens/WorkoutScreen';
+import ExerciseLibraryScreen from './src/screens/ExerciseLibraryScreen';
+import GymProgressScreen    from './src/screens/GymProgressScreen';
+import GymToolsScreen       from './src/screens/GymToolsScreen';
+import FastingScreen        from './src/screens/FastingScreen';
 import PeriodScreen        from './src/screens/PeriodScreen';
 import HealthRiskScreen    from './src/screens/HealthRiskScreen';
 import RecipeScreen        from './src/screens/RecipeScreen';
@@ -46,6 +50,10 @@ const SCREENS = {
   profile:    ProfileScreen,
   monitor:    MonitorScreen,
   settings:   SettingsScreen,
+  workout:         WorkoutScreen,
+  exerciselibrary: ExerciseLibraryScreen,
+  gymprogress:     GymProgressScreen,
+  gymtools:        GymToolsScreen,
   challenges:      ChallengesScreen,
   clubs:           ClubsScreen,
   segments:        SegmentsScreen,
@@ -80,6 +88,10 @@ function Icon({ name, size = 14, color }) {
   if (name === 'challenges') return <Svg {...p}><Path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><Path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><Path d="M4 22h16" /><Path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" /><Path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" /><Path d="M18 2H6v7a6 6 0 0 0 12 0V2z" /></Svg>;
   if (name === 'clubs')      return <Svg {...p}><Path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><Circle cx={9} cy={7} r={4} /><Path d="M23 21v-2a4 4 0 0 0-3-3.87" /><Path d="M16 3.13a4 4 0 0 1 0 7.75" /></Svg>;
   if (name === 'segments')     return <Svg {...p}><Path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><Line x1={4} y1={22} x2={4} y2={15} /></Svg>;
+  if (name === 'workout')      return <Svg {...p}><Path d="M6.5 6.5h11M6.5 17.5h11M3 12h18" /><Circle cx={3} cy={6.5} r={1.5} /><Circle cx={3} cy={17.5} r={1.5} /><Circle cx={21} cy={6.5} r={1.5} /><Circle cx={21} cy={17.5} r={1.5} /></Svg>;
+  if (name === 'exerciselibrary') return <Svg {...p}><Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></Svg>;
+  if (name === 'gymprogress')  return <Svg {...p}><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></Svg>;
+  if (name === 'gymtools')     return <Svg {...p}><Circle cx={12} cy={12} r={3} /><Path d="m12 1 1 4h-2zm0 22-1-4h2zM4.22 4.22l2.83 2.83-1.42 1.42zm13.95 13.95 2.83 2.83-1.42-1.42zM1 12l4-1v2zm22 0-4 1v-2zM4.22 19.78l2.83-2.83-1.42-1.42zm13.95-13.95 2.83-2.83-1.42 1.42z" /></Svg>;
   if (name === 'fasting')      return <Svg {...p}><Circle cx={12} cy={12} r={10} /><Path d="M12 6v6l4 2" /></Svg>;
   if (name === 'period')       return <Svg {...p}><Path d="M12 22c5.5-4 10-8.5 10-13a10 10 0 0 0-20 0c0 4.5 4.5 9 10 13z" /></Svg>;
   if (name === 'healthrisk')   return <Svg {...p}><Path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></Svg>;
@@ -153,6 +165,13 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
         {/* Score has a top separator */}
         <View style={sb.scoreSep} />
         <NavItem navKey="score"    label="Score"             iconName="score"    active={screen === 'score'}    onPress={navigate} />
+
+        {/* Gym section */}
+        <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Gym</Text>
+        <NavItem navKey="workout"         label="Workout Tracker"   iconName="workout"         active={screen === 'workout'}         onPress={navigate} />
+        <NavItem navKey="exerciselibrary" label="Exercise Library"  iconName="exerciselibrary" active={screen === 'exerciselibrary'} onPress={navigate} />
+        <NavItem navKey="gymprogress"     label="Gym Progress"      iconName="gymprogress"     active={screen === 'gymprogress'}     onPress={navigate} />
+        <NavItem navKey="gymtools"        label="Gym Tools"         iconName="gymtools"        active={screen === 'gymtools'}        onPress={navigate} />
 
         {/* Compete section */}
         <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Compete</Text>

@@ -1,0 +1,73 @@
+export const EXERCISES = [
+  // CHEST
+  { id: 'bench_press',      name: 'Bench Press',         muscles: ['Chest','Triceps','Shoulders'], equipment: 'Barbell',    category: 'Strength' },
+  { id: 'incline_bench',    name: 'Incline Bench Press', muscles: ['Chest','Triceps','Shoulders'], equipment: 'Barbell',    category: 'Strength' },
+  { id: 'decline_bench',    name: 'Decline Bench Press', muscles: ['Chest','Triceps'],             equipment: 'Barbell',    category: 'Strength' },
+  { id: 'db_bench',         name: 'Dumbbell Bench Press',muscles: ['Chest','Triceps','Shoulders'], equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'db_fly',           name: 'Dumbbell Fly',        muscles: ['Chest'],                       equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'cable_fly',        name: 'Cable Fly',           muscles: ['Chest'],                       equipment: 'Cable',      category: 'Strength' },
+  { id: 'pushup',           name: 'Push-up',             muscles: ['Chest','Triceps','Shoulders'], equipment: 'Bodyweight', category: 'Strength' },
+  { id: 'chest_press_mach', name: 'Chest Press Machine', muscles: ['Chest','Triceps'],             equipment: 'Machine',    category: 'Strength' },
+  { id: 'pec_deck',         name: 'Pec Deck',            muscles: ['Chest'],                       equipment: 'Machine',    category: 'Strength' },
+  // BACK
+  { id: 'deadlift',         name: 'Deadlift',            muscles: ['Back','Glutes','Hamstrings'],  equipment: 'Barbell',    category: 'Strength' },
+  { id: 'pullup',           name: 'Pull-up',             muscles: ['Back','Biceps'],               equipment: 'Bodyweight', category: 'Strength' },
+  { id: 'chinup',           name: 'Chin-up',             muscles: ['Back','Biceps'],               equipment: 'Bodyweight', category: 'Strength' },
+  { id: 'bent_row',         name: 'Barbell Bent Over Row',muscles: ['Back','Biceps'],              equipment: 'Barbell',    category: 'Strength' },
+  { id: 'db_row',           name: 'Dumbbell Row',        muscles: ['Back','Biceps'],               equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'lat_pulldown',     name: 'Lat Pulldown',        muscles: ['Back','Biceps'],               equipment: 'Cable',      category: 'Strength' },
+  { id: 'cable_row',        name: 'Seated Cable Row',    muscles: ['Back','Biceps'],               equipment: 'Cable',      category: 'Strength' },
+  { id: 'tbar_row',         name: 'T-Bar Row',           muscles: ['Back','Biceps'],               equipment: 'Barbell',    category: 'Strength' },
+  { id: 'face_pull',        name: 'Face Pull',           muscles: ['Back','Shoulders'],            equipment: 'Cable',      category: 'Strength' },
+  // SHOULDERS
+  { id: 'ohp',              name: 'Overhead Press',      muscles: ['Shoulders','Triceps'],         equipment: 'Barbell',    category: 'Strength' },
+  { id: 'db_ohp',           name: 'DB Shoulder Press',   muscles: ['Shoulders','Triceps'],         equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'lat_raise',        name: 'Lateral Raise',       muscles: ['Shoulders'],                   equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'front_raise',      name: 'Front Raise',         muscles: ['Shoulders'],                   equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'rear_delt_fly',    name: 'Rear Delt Fly',       muscles: ['Shoulders','Back'],            equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'shrug',            name: 'Barbell Shrug',       muscles: ['Shoulders','Traps'],           equipment: 'Barbell',    category: 'Strength' },
+  // ARMS — Biceps
+  { id: 'bb_curl',          name: 'Barbell Curl',        muscles: ['Biceps'],                      equipment: 'Barbell',    category: 'Strength' },
+  { id: 'db_curl',          name: 'Dumbbell Curl',       muscles: ['Biceps'],                      equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'hammer_curl',      name: 'Hammer Curl',         muscles: ['Biceps','Forearms'],           equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'preacher_curl',    name: 'Preacher Curl',       muscles: ['Biceps'],                      equipment: 'Machine',    category: 'Strength' },
+  { id: 'cable_curl',       name: 'Cable Curl',          muscles: ['Biceps'],                      equipment: 'Cable',      category: 'Strength' },
+  // ARMS — Triceps
+  { id: 'tricep_dip',       name: 'Tricep Dip',          muscles: ['Triceps','Chest'],             equipment: 'Bodyweight', category: 'Strength' },
+  { id: 'skull_crusher',    name: 'Skull Crusher',       muscles: ['Triceps'],                     equipment: 'Barbell',    category: 'Strength' },
+  { id: 'tricep_pushdown',  name: 'Tricep Pushdown',     muscles: ['Triceps'],                     equipment: 'Cable',      category: 'Strength' },
+  { id: 'overhead_tri_ext', name: 'Overhead Tricep Ext', muscles: ['Triceps'],                     equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'close_grip_bench', name: 'Close Grip Bench',    muscles: ['Triceps','Chest'],             equipment: 'Barbell',    category: 'Strength' },
+  // LEGS
+  { id: 'squat',            name: 'Barbell Squat',       muscles: ['Quads','Glutes','Hamstrings'], equipment: 'Barbell',    category: 'Strength' },
+  { id: 'front_squat',      name: 'Front Squat',         muscles: ['Quads','Core'],                equipment: 'Barbell',    category: 'Strength' },
+  { id: 'leg_press',        name: 'Leg Press',           muscles: ['Quads','Glutes'],              equipment: 'Machine',    category: 'Strength' },
+  { id: 'lunge',            name: 'Dumbbell Lunge',      muscles: ['Quads','Glutes','Hamstrings'], equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'romanian_dl',      name: 'Romanian Deadlift',   muscles: ['Hamstrings','Glutes'],         equipment: 'Barbell',    category: 'Strength' },
+  { id: 'leg_curl',         name: 'Leg Curl',            muscles: ['Hamstrings'],                  equipment: 'Machine',    category: 'Strength' },
+  { id: 'leg_extension',    name: 'Leg Extension',       muscles: ['Quads'],                       equipment: 'Machine',    category: 'Strength' },
+  { id: 'calf_raise',       name: 'Calf Raise',          muscles: ['Calves'],                      equipment: 'Machine',    category: 'Strength' },
+  { id: 'hip_thrust',       name: 'Hip Thrust',          muscles: ['Glutes','Hamstrings'],         equipment: 'Barbell',    category: 'Strength' },
+  { id: 'goblet_squat',     name: 'Goblet Squat',        muscles: ['Quads','Glutes'],              equipment: 'Kettlebell', category: 'Strength' },
+  { id: 'sumo_dl',          name: 'Sumo Deadlift',       muscles: ['Glutes','Hamstrings','Back'],  equipment: 'Barbell',    category: 'Strength' },
+  // CORE
+  { id: 'plank',            name: 'Plank',               muscles: ['Core'],                        equipment: 'Bodyweight', category: 'Strength' },
+  { id: 'crunch',           name: 'Crunch',              muscles: ['Core'],                        equipment: 'Bodyweight', category: 'Strength' },
+  { id: 'leg_raise',        name: 'Leg Raise',           muscles: ['Core'],                        equipment: 'Bodyweight', category: 'Strength' },
+  { id: 'russian_twist',    name: 'Russian Twist',       muscles: ['Core','Obliques'],             equipment: 'Bodyweight', category: 'Strength' },
+  { id: 'cable_crunch',     name: 'Cable Crunch',        muscles: ['Core'],                        equipment: 'Cable',      category: 'Strength' },
+  { id: 'ab_wheel',         name: 'Ab Wheel Rollout',    muscles: ['Core','Shoulders'],            equipment: 'Bodyweight', category: 'Strength' },
+  { id: 'hanging_leg_raise',name: 'Hanging Leg Raise',   muscles: ['Core'],                        equipment: 'Bodyweight', category: 'Strength' },
+  // FULL BODY / CARDIO
+  { id: 'burpee',           name: 'Burpee',              muscles: ['Full Body'],                   equipment: 'Bodyweight', category: 'Cardio'   },
+  { id: 'box_jump',         name: 'Box Jump',            muscles: ['Quads','Glutes'],              equipment: 'Bodyweight', category: 'Cardio'   },
+  { id: 'kb_swing',         name: 'Kettlebell Swing',    muscles: ['Glutes','Back','Core'],        equipment: 'Kettlebell', category: 'Strength' },
+  { id: 'clean_press',      name: 'Clean & Press',       muscles: ['Full Body'],                   equipment: 'Barbell',    category: 'Strength' },
+  { id: 'farmers_carry',    name: "Farmer's Carry",      muscles: ['Forearms','Core','Traps'],     equipment: 'Dumbbell',   category: 'Strength' },
+  { id: 'treadmill',        name: 'Treadmill Run',       muscles: ['Cardio'],                      equipment: 'Machine',    category: 'Cardio'   },
+  { id: 'rowing',           name: 'Rowing Machine',      muscles: ['Back','Legs','Core'],          equipment: 'Machine',    category: 'Cardio'   },
+  { id: 'jump_rope',        name: 'Jump Rope',           muscles: ['Cardio','Calves'],             equipment: 'Bodyweight', category: 'Cardio'   },
+];
+
+export const MUSCLE_GROUPS = ['All', 'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Core', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Full Body', 'Cardio'];
+export const EQUIPMENT     = ['All', 'Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight', 'Kettlebell'];
