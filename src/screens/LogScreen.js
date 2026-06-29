@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  ScrollView, StyleSheet, Modal, ActivityIndicator, Platform,
+  ScrollView, StyleSheet, Modal, ActivityIndicator, Platform, Image,
 } from 'react-native';
 import Svg, { Path, Line } from 'react-native-svg';
 import { C, F } from '../theme';
@@ -30,6 +30,20 @@ function emptyEntry() {
     water: 0, sleep_hours: '', sleep_quality: 5,
   };
 }
+
+const MEAL_TAGS = [
+  { key: 'on_plan', label: '🟢 On Plan', color: '#4CAF7C' },
+  { key: 'treat',   label: '🎉 Treat',   color: '#DAA520' },
+  { key: 'stress',  label: '😰 Stress',  color: '#E57373' },
+  { key: 'mindful', label: '🧘 Mindful', color: '#7C8BF5' },
+];
+
+const MINDFUL_OPTS = [
+  { key: 'great',    emoji: '😊', label: 'Great',    sub: 'Felt good about my choices' },
+  { key: 'ok',       emoji: '😐', label: 'OK',       sub: 'Pretty normal day' },
+  { key: 'struggle', emoji: '😞', label: 'Struggled', sub: 'Hard day with food' },
+  { key: 'offplan',  emoji: '⚡', label: 'Off plan',  sub: 'Didn\'t follow my plan' },
+];
 
 // ─── Mic SVG icon (matches HTML exactly) ───────────────────────────────────
 function MicSvg({ color = '#554430' }) {
@@ -130,6 +144,13 @@ export default function LogScreen({ navigation }) {
   const [tmplName,      setTmplName]      = useState('');
   const [showSaveTmpl,  setShowSaveTmpl]  = useState(false);
 
+  // Ate-style features
+  const [afTag,          setAfTag]          = useState(null);          // tag for food being added
+  const [showMindful,    setShowMindful]    = useState(false);         // mindfulness check-in after save
+  const [mindfulRating,  setMindfulRating]  = useState(null);
+  const photoInputRef  = useRef(null);
+  const [pendingPhotoIdx, setPendingPhotoIdx] = useState(null);
+
   // AI assistant
   const [asstOpen,    setAsstOpen]    = useState(true);
   const [asstMsgs,    setAsstMsgs]    = useState([{
@@ -210,6 +231,8 @@ export default function LogScreen({ navigation }) {
     setEntry(updated);
     if (updated.workout?.trim()) awardXP('exercise').catch(() => {});
     setSaved(true);
+    setMindfulRating(null);
+    setShowMindful(true);
   }
 
   // ── Clear ───────────────────────────────────────────────────────────────
@@ -252,8 +275,32 @@ export default function LogScreen({ navigation }) {
     setAfView('search');
     setAfSearchQ(''); setAfResults([]); setAfSearching(false);
     setAfName(''); setAfCal(''); setAfServing('');
-    setAfProtein(''); setAfCarbs('');
+    setAfProtein(''); setAfCarbs(''); setAfTag(null);
     setShowFood(true);
+  }
+
+  function capturePhotoForFood(idx) {
+    if (Platform.OS !== 'web') return;
+    setPendingPhotoIdx(idx);
+    photoInputRef.current?.click();
+  }
+
+  function handlePhotoCapture(e) {
+    const file = e.target.files?.[0];
+    if (!file || pendingPhotoIdx === null) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const dataUrl = ev.target.result;
+      setEntry(ent => {
+        const foods = (ent.foods || []).map((f, i) =>
+          i === pendingPhotoIdx ? { ...f, photo: dataUrl } : f
+        );
+        return { ...ent, foods };
+      });
+      setPendingPhotoIdx(null);
+      e.target.value = '';
+    };
+    reader.readAsDataURL(file);
   }
 
   function onSearchChange(q) {
@@ -342,6 +389,8 @@ export default function LogScreen({ navigation }) {
       protein:  parseFloat(afProtein) || 0,
       carbs:    parseFloat(afCarbs)   || 0,
       fat:      0,
+      tag:      afTag,
+      photo:    null,
     };
     setEntry(e => {
       const foods = [...(e.foods || []), food];
@@ -354,6 +403,7 @@ export default function LogScreen({ navigation }) {
       };
     });
     awardXP('food_log').catch(() => {});
+    setAfTag(null);
     setShowFood(false);
   }
 
@@ -688,6 +738,44 @@ export default function LogScreen({ navigation }) {
               ))}
             </View>
 
+            {/* Mindfulness summary */}
+            {mindfulRating && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingHorizontal: 4 }}>
+                <Text style={{ fontSize: 20 }}>{MINDFUL_OPTS.find(o => o.key === mindfulRating)?.emoji}</Text>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>
+                  Today's eating: {MINDFUL_OPTS.find(o => o.key === mindfulRating)?.label}
+                </Text>
+                <TouchableOpacity onPress={() => setShowMindful(true)} style={{ marginLeft: 'auto' }}>
+                  <Text style={{ fontFamily: F.mono, fontSize: 10, color: accentColor }}>change</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {!mindfulRating && (
+              <TouchableOpacity onPress={() => setShowMindful(true)} style={{ marginTop: 10, paddingVertical: 8, borderWidth: 1, borderColor: mc.border, alignItems: 'center' }}>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>🧘 How did your eating feel today?</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Photo timeline */}
+            {(entry?.foods || []).some(f => f.photo) && (
+              <View style={{ marginTop: 14 }}>
+                <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, letterSpacing: 1, marginBottom: 8 }}>MEAL PHOTOS</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {(entry.foods || []).filter(f => f.photo).map((f, i) => (
+                    <View key={i} style={{ marginRight: 10, alignItems: 'center' }}>
+                      <Image source={{ uri: f.photo }} style={{ width: 70, height: 70, borderRadius: 2 }} />
+                      <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, marginTop: 4, maxWidth: 70 }} numberOfLines={1}>{f.name}</Text>
+                      {f.tag && (
+                        <Text style={{ fontFamily: F.mono, fontSize: 9, color: MEAL_TAGS.find(t => t.key === f.tag)?.color || mc.text3 }}>
+                          {MEAL_TAGS.find(t => t.key === f.tag)?.label}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
             <View style={st.doneActions}>
               <TouchableOpacity style={st.logEditBtn} onPress={handleClear}>
                 <Text style={st.logEditTxt}>Clear and re-log</Text>
@@ -812,10 +900,28 @@ export default function LogScreen({ navigation }) {
                 <Text style={st.noFood}>Nothing logged yet. Add your first meal below.</Text>
               ) : (
                 (entry.foods || []).map((f, i) => (
-                  <View key={i} style={st.foodItem}>
-                    <Text style={st.foodItemName} numberOfLines={1}>
-                      {f.name}{f.serving ? ` (${f.serving})` : ''}
-                    </Text>
+                  <View key={i} style={[st.foodItem, { alignItems: 'flex-start', paddingVertical: 8 }]}>
+                    {f.photo ? (
+                      <TouchableOpacity onPress={() => capturePhotoForFood(i)}>
+                        <Image source={{ uri: f.photo }} style={{ width: 38, height: 38, marginRight: 8, borderRadius: 2 }} />
+                      </TouchableOpacity>
+                    ) : (
+                      Platform.OS === 'web' && (
+                        <TouchableOpacity onPress={() => capturePhotoForFood(i)} style={{ width: 38, height: 38, marginRight: 8, borderWidth: 1, borderColor: mc.border, alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}>
+                          <Text style={{ fontSize: 16 }}>📷</Text>
+                        </TouchableOpacity>
+                      )
+                    )}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={st.foodItemName} numberOfLines={1}>
+                        {f.name}{f.serving ? ` (${f.serving})` : ''}
+                      </Text>
+                      {f.tag && (
+                        <Text style={{ fontFamily: F.mono, fontSize: 9, color: MEAL_TAGS.find(t => t.key === f.tag)?.color || mc.text3 }}>
+                          {MEAL_TAGS.find(t => t.key === f.tag)?.label}
+                        </Text>
+                      )}
+                    </View>
                     <Text style={st.foodItemCal}>{f.calories || 0} kcal</Text>
                     <Text style={st.foodItemMacro}>{f.protein || 0}g P</Text>
                     <TouchableOpacity onPress={() => deleteFood(i)}>
@@ -957,6 +1063,29 @@ export default function LogScreen({ navigation }) {
                     </View>
                   </View>
 
+                  {/* Tag selector */}
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={st.modalLabel}>Tag (optional)</Text>
+                    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                      {MEAL_TAGS.map(t => (
+                        <TouchableOpacity
+                          key={t.key}
+                          onPress={() => setAfTag(afTag === t.key ? null : t.key)}
+                          style={{
+                            paddingHorizontal: 10, paddingVertical: 5,
+                            borderWidth: 1,
+                            borderColor: afTag === t.key ? t.color : mc.border,
+                            backgroundColor: afTag === t.key ? t.color + '20' : 'transparent',
+                          }}
+                        >
+                          <Text style={{ fontFamily: F.mono, fontSize: 11, color: afTag === t.key ? t.color : mc.text3 }}>
+                            {t.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
                   <View style={st.modalActions}>
                     <TouchableOpacity style={st.modalCancel} onPress={() => setAfView('search')}>
                       <Text style={st.modalCancelTxt}>← Search</Text>
@@ -1039,6 +1168,52 @@ export default function LogScreen({ navigation }) {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* ── Mindfulness Check-in Modal ── */}
+      <Modal visible={showMindful} transparent animationType="fade" onRequestClose={() => setShowMindful(false)}>
+        <TouchableOpacity style={st.modalBackdrop} activeOpacity={1} onPress={() => setShowMindful(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={st.modalBox}>
+              <Text style={st.modalTitle}>How did your eating feel today?</Text>
+              <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, marginBottom: 16 }}>
+                A moment of reflection builds better habits.
+              </Text>
+              {MINDFUL_OPTS.map(o => (
+                <TouchableOpacity
+                  key={o.key}
+                  onPress={() => { setMindfulRating(o.key); setShowMindful(false); }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingVertical: 12, paddingHorizontal: 14,
+                    marginBottom: 8,
+                    borderWidth: 1,
+                    borderColor: mindfulRating === o.key ? accentColor : mc.border,
+                    backgroundColor: mindfulRating === o.key ? accentColor + '15' : 'transparent',
+                  }}
+                >
+                  <Text style={{ fontSize: 22, marginRight: 14 }}>{o.emoji}</Text>
+                  <View>
+                    <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text }}>{o.label}</Text>
+                    <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3 }}>{o.sub}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={[st.modalCancel, { marginTop: 4 }]} onPress={() => setShowMindful(false)}>
+                <Text style={st.modalCancelTxt}>Skip for now</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Hidden file input for meal photo capture (web only) */}
+      {Platform.OS === 'web' && React.createElement('input', {
+        ref: photoInputRef,
+        type: 'file',
+        accept: 'image/*',
+        style: { display: 'none' },
+        onChange: handlePhotoCapture,
+      })}
 
       <BarcodeScanner
         visible={showScanner}
