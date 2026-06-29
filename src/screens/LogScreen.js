@@ -27,6 +27,7 @@ function emptyEntry() {
     date: today(), weight: '', steps: '', workout: '',
     hunger: 5, energy: 5, foods: [],
     calories: 0, protein: 0, carbs: 0, fat: 0,
+    water: 0, sleep_hours: '', sleep_quality: 5,
   };
 }
 
@@ -123,6 +124,12 @@ export default function LogScreen({ navigation }) {
   const [showScanner,   setShowScanner]   = useState(false);
   const [scanLoading,   setScanLoading]   = useState(false);
 
+  // Meal templates
+  const [templates,     setTemplates]     = useState([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [tmplName,      setTmplName]      = useState('');
+  const [showSaveTmpl,  setShowSaveTmpl]  = useState(false);
+
   // AI assistant
   const [asstOpen,    setAsstOpen]    = useState(true);
   const [asstMsgs,    setAsstMsgs]    = useState([{
@@ -139,10 +146,12 @@ export default function LogScreen({ navigation }) {
 
   // ── Load on mount ───────────────────────────────────────────────────────
   useEffect(() => {
-    getUser().then(u => {
+    getUser().then(async u => {
       const key = `toogood_daily_logs_${u}`;
       setLogKey(key);
       loadEntry(key);
+      const raw = await AsyncStorage.getItem(`toogood_meal_templates_${u}`);
+      if (raw) setTemplates(JSON.parse(raw));
     });
   }, []);
 
@@ -269,6 +278,39 @@ export default function LogScreen({ navigation }) {
     setAfProtein(String(item.protein));
     setAfCarbs(String(item.carbs));
     setAfView('manual');
+  }
+
+  async function saveTemplate() {
+    if (!tmplName.trim() || !(entry?.foods?.length)) return;
+    const u = await getUser();
+    const key = `toogood_meal_templates_${u}`;
+    const t = { id: Date.now(), name: tmplName.trim(), foods: entry.foods };
+    const updated = [...templates, t];
+    setTemplates(updated);
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+    setShowSaveTmpl(false);
+    setTmplName('');
+  }
+
+  async function deleteTemplate(id) {
+    const u = await getUser();
+    const key = `toogood_meal_templates_${u}`;
+    const updated = templates.filter(t => t.id !== id);
+    setTemplates(updated);
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+  }
+
+  function applyTemplate(t) {
+    setEntry(e => {
+      const foods = [...(e.foods || []), ...t.foods];
+      return {
+        ...e, foods,
+        calories: foods.reduce((s, f) => s + (f.calories || 0), 0),
+        protein:  foods.reduce((s, f) => s + (f.protein  || 0), 0),
+        carbs:    foods.reduce((s, f) => s + (f.carbs    || 0), 0),
+      };
+    });
+    setShowTemplates(false);
   }
 
   async function handleScanned(code) {
@@ -712,10 +754,56 @@ export default function LogScreen({ navigation }) {
               </View>
             </View>
 
+            {/* ── Water tracker ── */}
+            <View style={[st.logRow, { marginTop: 14, alignItems: 'center', borderTopWidth: 1, borderTopColor: mc.border, paddingTop: 14 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={st.logLabel}>Water intake</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                  <TouchableOpacity onPress={() => setEntry(e => ({ ...e, water: Math.max(0, (e.water || 0) - 1) }))} style={{ width: 28, height: 28, borderWidth: 1, borderColor: mc.border, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: mc.text2, fontSize: 16, fontFamily: F.mono }}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={{ fontFamily: F.serif, fontSize: 22, color: accentColor, minWidth: 30, textAlign: 'center' }}>{entry?.water || 0}</Text>
+                  <TouchableOpacity onPress={() => setEntry(e => ({ ...e, water: (e.water || 0) + 1 }))} style={{ width: 28, height: 28, borderWidth: 1, borderColor: mc.border, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: mc.text2, fontSize: 16, fontFamily: F.mono }}>+</Text>
+                  </TouchableOpacity>
+                  <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>glasses  ·  goal: 8</Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 4, marginTop: 8 }}>
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <View key={i} style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: i < (entry?.water || 0) ? accentColor : mc.border }} />
+                  ))}
+                </View>
+              </View>
+              <View style={{ flex: 1, paddingLeft: 16 }}>
+                <Text style={st.logLabel}>Sleep (hours)</Text>
+                <TextInput
+                  style={[st.logInput, { marginTop: 6 }]}
+                  value={entry?.sleep_hours || ''}
+                  onChangeText={v => setEntry(e => ({ ...e, sleep_hours: v }))}
+                  keyboardType="decimal-pad"
+                  placeholder="e.g. 7.5"
+                  placeholderTextColor={mc.text3}
+                />
+                <View style={[st.sliderTop, { marginTop: 6 }]}>
+                  <Text style={[st.logLabel, { fontSize: 10 }]}>Sleep quality</Text>
+                  <Text style={st.sliderVal}>{entry?.sleep_quality || 5}</Text>
+                </View>
+                <WebSlider min={1} max={10} value={entry?.sleep_quality || 5} onChange={v => setEntry(e => ({ ...e, sleep_quality: v }))} accentColor={accentColor} borderColor={mc.border} />
+              </View>
+            </View>
+
             {/* Food log header — .food-log-header */}
             <View style={st.foodLogHeader}>
               <Text style={st.foodLogTitle}>Food Log</Text>
-              <Text style={st.foodCalTotal}>{totalCal} kcal</Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={st.foodCalTotal}>{totalCal} kcal eaten</Text>
+                {entry?.steps ? (
+                  <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3 }}>
+                    Net: {Math.max(0, totalCal - Math.round(parseInt(entry.steps || 0) * 0.04))} kcal
+                    {'  '}(~{Math.round(parseInt(entry.steps || 0) * 0.04)} burned)
+                  </Text>
+                ) : null}
+              </View>
             </View>
 
             {/* Food items — .food-items */}
@@ -747,6 +835,16 @@ export default function LogScreen({ navigation }) {
               <TouchableOpacity style={st.foodBtn} onPress={() => setShowScanner(true)} disabled={scanLoading}>
                 <Text style={st.foodBtnTxt}>{scanLoading ? 'Looking up…' : '▦  Scan barcode'}</Text>
               </TouchableOpacity>
+              {templates.length > 0 && (
+                <TouchableOpacity style={st.foodBtn} onPress={() => setShowTemplates(true)}>
+                  <Text style={st.foodBtnTxt}>⊞  Templates</Text>
+                </TouchableOpacity>
+              )}
+              {(entry?.foods?.length > 0) && (
+                <TouchableOpacity style={st.foodBtn} onPress={() => { setTmplName(''); setShowSaveTmpl(true); }}>
+                  <Text style={st.foodBtnTxt}>💾  Save meal</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Log footer — .log-footer */}
@@ -870,6 +968,73 @@ export default function LogScreen({ navigation }) {
                 </>
               )}
 
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Meal Templates Modal ── */}
+      <Modal visible={showTemplates} transparent animationType="fade" onRequestClose={() => setShowTemplates(false)}>
+        <TouchableOpacity style={st.modalBackdrop} activeOpacity={1} onPress={() => setShowTemplates(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={st.modalBox}>
+              <Text style={st.modalTitle}>Meal Templates</Text>
+              <ScrollView style={{ maxHeight: 320 }}>
+                {templates.map(t => (
+                  <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: mc.border }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text }}>{t.name}</Text>
+                      <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3 }}>
+                        {t.foods.length} items · {t.foods.reduce((s, f) => s + (f.calories || 0), 0)} kcal
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => applyTemplate(t)} style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: accentColor, marginRight: 8 }}>
+                      <Text style={{ fontFamily: F.mono, fontSize: 11, color: '#0A0A0A', fontWeight: '700' }}>Add</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => deleteTemplate(t.id)}>
+                      <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+              <View style={[st.modalActions, { marginTop: 12 }]}>
+                <TouchableOpacity style={st.modalCancel} onPress={() => setShowTemplates(false)}>
+                  <Text style={st.modalCancelTxt}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Save Meal Template Modal ── */}
+      <Modal visible={showSaveTmpl} transparent animationType="fade" onRequestClose={() => setShowSaveTmpl(false)}>
+        <TouchableOpacity style={st.modalBackdrop} activeOpacity={1} onPress={() => setShowSaveTmpl(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={st.modalBox}>
+              <Text style={st.modalTitle}>Save as template</Text>
+              <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, marginBottom: 12 }}>
+                Saves your current {entry?.foods?.length || 0} food items as a reusable meal template.
+              </Text>
+              <View style={st.modalField}>
+                <Text style={st.modalLabel}>Template name</Text>
+                <TextInput
+                  style={st.modalInput}
+                  value={tmplName}
+                  onChangeText={setTmplName}
+                  placeholder="e.g. My usual breakfast"
+                  placeholderTextColor={mc.text3}
+                  autoFocus
+                />
+              </View>
+              <View style={st.modalActions}>
+                <TouchableOpacity style={st.modalCancel} onPress={() => setShowSaveTmpl(false)}>
+                  <Text style={st.modalCancelTxt}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={st.modalOk} onPress={saveTemplate}>
+                  <Text style={st.modalOkTxt}>Save</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
