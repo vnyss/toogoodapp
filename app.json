@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Too Good",
+    "slug": "toogoodapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#080808"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#080808"
+      },
+      "package": "com.toogood.app"
+    },
+    "ios": {
+      "bundleIdentifier": "com.toogood.app"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

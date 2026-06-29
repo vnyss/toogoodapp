@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Too Good</title>
+  <meta name="theme-color" content="#080808" />
+  <!-- Exact same fonts as the website -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Special+Elite&family=Playfair+Display:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; background: #080808; }
+    body {
+      font-family: 'Courier Prime', monospace;
+      background: #080808;
+      color: #EDE3CE;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow: hidden;
+    }
+    /* Remove default outline — the app handles focus */
+    *:focus { outline: none; }
+    /* Custom scrollbar matching website */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.13); border-radius: 2px; }
+    /* Disable tap highlight */
+    * { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>
