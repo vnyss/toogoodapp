@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
 import Svg, { Path, Circle, Line, Rect, Polyline, Polygon } from 'react-native-svg';
 import { C } from './src/theme';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
@@ -149,8 +149,11 @@ function Sidebar({ screen, navigate, username, onLogout }) {
 }
 
 export default function App() {
-  const [screen,   setScreen]   = useState('loading');
-  const [username, setUsername] = useState('');
+  const [screen,      setScreen]      = useState('loading');
+  const [username,    setUsername]    = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
 
   useEffect(() => {
     getToken().then(async t => {
@@ -188,18 +191,58 @@ export default function App() {
   return (
     <ThemeProvider username={username}>
       <View style={styles.root}>
-        <Sidebar screen={screen} navigate={persistScreen} username={username} onLogout={handleLogout} />
+        {/* Desktop: always-visible sidebar */}
+        {!isMobile && (
+          <Sidebar screen={screen} navigate={persistScreen} username={username} onLogout={handleLogout} />
+        )}
+
         <View style={styles.content}>
+          {/* Mobile top bar with hamburger */}
+          {isMobile && (
+            <View style={styles.topBar}>
+              <TouchableOpacity onPress={() => setSidebarOpen(v => !v)} style={styles.hamburger}>
+                <View style={styles.hLine} />
+                <View style={styles.hLine} />
+                <View style={styles.hLine} />
+              </TouchableOpacity>
+              <Text style={styles.topBarTitle}>Too Good</Text>
+            </View>
+          )}
           <Screen key={screen} navigation={navigation} />
         </View>
+
+        {/* Mobile: overlay sidebar */}
+        {isMobile && sidebarOpen && (
+          <>
+            <TouchableOpacity
+              style={styles.overlay}
+              onPress={() => setSidebarOpen(false)}
+              activeOpacity={1}
+            />
+            <View style={styles.mobileSidebar}>
+              <Sidebar
+                screen={screen}
+                navigate={(s) => { persistScreen(s); setSidebarOpen(false); }}
+                username={username}
+                onLogout={handleLogout}
+              />
+            </View>
+          </>
+        )}
       </View>
     </ThemeProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  root:    { flex: 1, flexDirection: 'row', backgroundColor: C.bg },
-  content: { flex: 1, overflow: 'hidden' },
+  root:         { flex: 1, flexDirection: 'row', backgroundColor: C.bg },
+  content:      { flex: 1, overflow: 'hidden', flexDirection: 'column' },
+  topBar:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.sidebar },
+  hamburger:    { padding: 6, gap: 4, justifyContent: 'center' },
+  hLine:        { width: 20, height: 2, backgroundColor: C.text2, marginVertical: 2 },
+  topBarTitle:  { fontFamily: "'Special Elite', monospace", fontSize: 15, color: C.text, letterSpacing: 1.5, marginLeft: 12 },
+  overlay:      { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 10 },
+  mobileSidebar:{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 260, zIndex: 11 },
 });
 
 // Sidebar styles — mirrors _sidebar.html CSS exactly
