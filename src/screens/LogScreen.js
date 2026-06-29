@@ -6,7 +6,7 @@ import {
 import Svg, { Path, Line } from 'react-native-svg';
 import { C, F } from '../theme';
 import { useTheme } from '../ThemeContext';
-import { aiChat, fetchLogs, syncLogs, awardXP, lookupBarcode } from '../api';
+import { aiChat, fetchLogs, syncLogs, awardXP, lookupBarcode, searchFood } from '../api';
 import BarcodeScanner from '../components/BarcodeScanner';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getToken, getUser } from '../auth';
@@ -108,11 +108,16 @@ export default function LogScreen({ navigation }) {
 
   // Add-food modal
   const [showFood,    setShowFood]    = useState(false);
+  const [afView,      setAfView]      = useState('search'); // 'search' | 'manual'
   const [afName,      setAfName]      = useState('');
   const [afCal,       setAfCal]       = useState('');
   const [afServing,   setAfServing]   = useState('');
   const [afProtein,   setAfProtein]   = useState('');
   const [afCarbs,     setAfCarbs]     = useState('');
+  const [afSearchQ,   setAfSearchQ]   = useState('');
+  const [afResults,   setAfResults]   = useState([]);
+  const [afSearching, setAfSearching] = useState(false);
+  const searchTimer = useRef(null);
 
   // Barcode scanner
   const [showScanner,   setShowScanner]   = useState(false);
@@ -235,9 +240,35 @@ export default function LogScreen({ navigation }) {
   const totalCal = (entry?.foods || []).reduce((s, f) => s + (f.calories || 0), 0);
 
   function openAddFood() {
+    setAfView('search');
+    setAfSearchQ(''); setAfResults([]); setAfSearching(false);
     setAfName(''); setAfCal(''); setAfServing('');
     setAfProtein(''); setAfCarbs('');
     setShowFood(true);
+  }
+
+  function onSearchChange(q) {
+    setAfSearchQ(q);
+    setAfResults([]);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!q.trim()) { setAfSearching(false); return; }
+    setAfSearching(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const results = await searchFood(q);
+        setAfResults(results);
+      } catch {}
+      setAfSearching(false);
+    }, 450);
+  }
+
+  function selectFoodResult(item) {
+    setAfName(item.brand ? `${item.name} (${item.brand})` : item.name);
+    setAfCal(String(item.calories));
+    setAfServing(item.serving);
+    setAfProtein(String(item.protein));
+    setAfCarbs(String(item.carbs));
+    setAfView('manual');
   }
 
   async function handleScanned(code) {
@@ -738,88 +769,107 @@ export default function LogScreen({ navigation }) {
         transparent
         onRequestClose={() => setShowFood(false)}
       >
-        <TouchableOpacity
-          style={st.modalBackdrop}
-          activeOpacity={1}
-          onPress={() => setShowFood(false)}
-        >
+        <TouchableOpacity style={st.modalBackdrop} activeOpacity={1} onPress={() => setShowFood(false)}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
             <View style={st.modalBox}>
-              <Text style={st.modalTitle}>Add food item</Text>
 
-              {/* Food name */}
-              <View style={st.modalField}>
-                <Text style={st.modalLabel}>Food name</Text>
-                <TextInput
-                  style={st.modalInput}
-                  value={afName}
-                  onChangeText={setAfName}
-                  placeholder="e.g. Dal rice, banana, 2 chapati"
-                  placeholderTextColor={mc.text3}
-                  autoFocus
-                />
-              </View>
+              {afView === 'search' ? (
+                <>
+                  <Text style={st.modalTitle}>Search food</Text>
 
-              {/* Calories + Serving */}
-              <View style={st.modalRow}>
-                <View style={[st.modalField, { flex: 1, marginRight: 12 }]}>
-                  <Text style={st.modalLabel}>Calories (kcal)</Text>
-                  <TextInput
-                    style={st.modalInput}
-                    value={afCal}
-                    onChangeText={setAfCal}
-                    keyboardType="number-pad"
-                    placeholder="350"
-                    placeholderTextColor={mc.text3}
-                  />
-                </View>
-                <View style={[st.modalField, { flex: 1 }]}>
-                  <Text style={st.modalLabel}>Serving size</Text>
-                  <TextInput
-                    style={st.modalInput}
-                    value={afServing}
-                    onChangeText={setAfServing}
-                    placeholder="1 plate, 100g..."
-                    placeholderTextColor={mc.text3}
-                  />
-                </View>
-              </View>
+                  {/* Search input */}
+                  <View style={st.modalField}>
+                    <TextInput
+                      style={[st.modalInput, { marginBottom: 0 }]}
+                      value={afSearchQ}
+                      onChangeText={onSearchChange}
+                      placeholder="Type food name — banana, dal, oats…"
+                      placeholderTextColor={mc.text3}
+                      autoFocus
+                    />
+                  </View>
 
-              {/* Protein + Carbs */}
-              <View style={st.modalRow}>
-                <View style={[st.modalField, { flex: 1, marginRight: 12 }]}>
-                  <Text style={st.modalLabel}>Protein (g)</Text>
-                  <TextInput
-                    style={st.modalInput}
-                    value={afProtein}
-                    onChangeText={setAfProtein}
-                    keyboardType="decimal-pad"
-                    placeholder="0"
-                    placeholderTextColor={mc.text3}
-                  />
-                </View>
-                <View style={[st.modalField, { flex: 1 }]}>
-                  <Text style={st.modalLabel}>Carbs (g)</Text>
-                  <TextInput
-                    style={st.modalInput}
-                    value={afCarbs}
-                    onChangeText={setAfCarbs}
-                    keyboardType="decimal-pad"
-                    placeholder="0"
-                    placeholderTextColor={mc.text3}
-                  />
-                </View>
-              </View>
+                  {/* Results */}
+                  <ScrollView style={{ maxHeight: 280, marginTop: 10 }} keyboardShouldPersistTaps="handled">
+                    {afSearching && (
+                      <ActivityIndicator color={accentColor} style={{ marginVertical: 16 }} />
+                    )}
+                    {!afSearching && afSearchQ.trim() !== '' && afResults.length === 0 && (
+                      <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, padding: 8 }}>
+                        No results — try a different name or enter manually
+                      </Text>
+                    )}
+                    {afResults.map((item, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        onPress={() => selectFoodResult(item)}
+                        style={{ paddingVertical: 10, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: mc.border }}
+                      >
+                        <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text }} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        {!!item.brand && (
+                          <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3 }}>{item.brand}</Text>
+                        )}
+                        <Text style={{ fontFamily: F.mono, fontSize: 11, color: accentColor, marginTop: 2 }}>
+                          {item.calories} kcal · {item.protein}g P · {item.carbs}g C · per 100g
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
 
-              {/* Modal actions */}
-              <View style={st.modalActions}>
-                <TouchableOpacity style={st.modalCancel} onPress={() => setShowFood(false)}>
-                  <Text style={st.modalCancelTxt}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={st.modalOk} onPress={submitAddFood}>
-                  <Text style={st.modalOkTxt}>Add</Text>
-                </TouchableOpacity>
-              </View>
+                  {/* Actions */}
+                  <View style={[st.modalActions, { marginTop: 14 }]}>
+                    <TouchableOpacity style={st.modalCancel} onPress={() => setShowFood(false)}>
+                      <Text style={st.modalCancelTxt}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={st.modalCancel} onPress={() => { setAfName(''); setAfCal(''); setAfServing(''); setAfProtein(''); setAfCarbs(''); setAfView('manual'); }}>
+                      <Text style={[st.modalCancelTxt, { color: accentColor }]}>Enter manually</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={st.modalTitle}>Add food item</Text>
+
+                  <View style={st.modalField}>
+                    <Text style={st.modalLabel}>Food name</Text>
+                    <TextInput style={st.modalInput} value={afName} onChangeText={setAfName} placeholder="e.g. Dal rice, banana" placeholderTextColor={mc.text3} autoFocus />
+                  </View>
+
+                  <View style={st.modalRow}>
+                    <View style={[st.modalField, { flex: 1, marginRight: 12 }]}>
+                      <Text style={st.modalLabel}>Calories (kcal)</Text>
+                      <TextInput style={st.modalInput} value={afCal} onChangeText={setAfCal} keyboardType="number-pad" placeholder="350" placeholderTextColor={mc.text3} />
+                    </View>
+                    <View style={[st.modalField, { flex: 1 }]}>
+                      <Text style={st.modalLabel}>Serving size</Text>
+                      <TextInput style={st.modalInput} value={afServing} onChangeText={setAfServing} placeholder="100g, 1 plate…" placeholderTextColor={mc.text3} />
+                    </View>
+                  </View>
+
+                  <View style={st.modalRow}>
+                    <View style={[st.modalField, { flex: 1, marginRight: 12 }]}>
+                      <Text style={st.modalLabel}>Protein (g)</Text>
+                      <TextInput style={st.modalInput} value={afProtein} onChangeText={setAfProtein} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={mc.text3} />
+                    </View>
+                    <View style={[st.modalField, { flex: 1 }]}>
+                      <Text style={st.modalLabel}>Carbs (g)</Text>
+                      <TextInput style={st.modalInput} value={afCarbs} onChangeText={setAfCarbs} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={mc.text3} />
+                    </View>
+                  </View>
+
+                  <View style={st.modalActions}>
+                    <TouchableOpacity style={st.modalCancel} onPress={() => setAfView('search')}>
+                      <Text style={st.modalCancelTxt}>← Search</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={st.modalOk} onPress={submitAddFood}>
+                      <Text style={st.modalOkTxt}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
             </View>
           </TouchableOpacity>
         </TouchableOpacity>

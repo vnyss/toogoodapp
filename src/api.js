@@ -89,6 +89,28 @@ export const syncLogs  = (logs)  => post('/perfect/api/daily-logs', { logs });
 export const forgotPassword  = (email)         => post('/api/v1/forgot-password', { email });
 export const calendarRemind  = (date, blocks)  => post('/perfect/api/calendar/remind', { date, blocks });
 
+// Food search via Open Food Facts (no API key needed)
+export async function searchFood(query) {
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=10&fields=product_name,brands,nutriments,serving_size,image_small_url`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Search failed');
+  const data = await res.json();
+  return (data.products || [])
+    .filter(p => p.product_name)
+    .map(p => {
+      const n = p.nutriments || {};
+      return {
+        name:     p.product_name,
+        brand:    p.brands || '',
+        serving:  p.serving_size || '100g',
+        calories: Math.round(n['energy-kcal_100g'] || n['energy-kcal'] || 0),
+        protein:  Math.round(n.proteins_100g  || 0),
+        carbs:    Math.round(n.carbohydrates_100g || 0),
+        fat:      Math.round(n.fat_100g || 0),
+      };
+    });
+}
+
 // Barcode lookup via Open Food Facts (no API key needed)
 export async function lookupBarcode(code) {
   const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
