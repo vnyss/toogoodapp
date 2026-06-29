@@ -31,6 +31,36 @@ function emptyEntry() {
   };
 }
 
+// ─── Indian food quick-add database ─────────────────────────────────────────
+const INDIAN_FOODS = [
+  { name: 'Roti (wheat)',        calories: 71,  protein: 2.7, carbs: 15,  fat: 0.4, serving: '1 piece 30g' },
+  { name: 'Rice (cooked)',       calories: 130, protein: 2.7, carbs: 28,  fat: 0.3, serving: '100g' },
+  { name: 'Dal Tadka',           calories: 148, protein: 9,   carbs: 20,  fat: 3,   serving: '100g' },
+  { name: 'Idli',                calories: 39,  protein: 2,   carbs: 8,   fat: 0.2, serving: '1 piece 30g' },
+  { name: 'Dosa',                calories: 133, protein: 3.5, carbs: 25,  fat: 2.7, serving: '1 medium 70g' },
+  { name: 'Sambar',              calories: 50,  protein: 3,   carbs: 8,   fat: 1,   serving: '100g' },
+  { name: 'Palak Paneer',        calories: 165, protein: 9,   carbs: 6,   fat: 12,  serving: '100g' },
+  { name: 'Chicken Curry',       calories: 165, protein: 20,  carbs: 4,   fat: 8,   serving: '100g' },
+  { name: 'Paneer Butter Masala',calories: 193, protein: 10,  carbs: 8,   fat: 14,  serving: '100g' },
+  { name: 'Biryani (chicken)',   calories: 200, protein: 12,  carbs: 25,  fat: 6,   serving: '100g' },
+  { name: 'Curd / Dahi',         calories: 61,  protein: 3.1, carbs: 4.7, fat: 3.3, serving: '100g' },
+  { name: 'Poha',                calories: 76,  protein: 1.5, carbs: 16,  fat: 0.3, serving: '100g' },
+  { name: 'Upma',                calories: 90,  protein: 2.4, carbs: 15,  fat: 2.5, serving: '100g' },
+  { name: 'Paratha (plain)',     calories: 170, protein: 3.5, carbs: 26,  fat: 6,   serving: '1 piece 60g' },
+  { name: 'Aloo Paratha',        calories: 200, protein: 4,   carbs: 30,  fat: 7,   serving: '1 piece 75g' },
+  { name: 'Rajma',               calories: 144, protein: 9,   carbs: 24,  fat: 0.5, serving: '100g' },
+  { name: 'Chana Masala',        calories: 164, protein: 9,   carbs: 27,  fat: 3,   serving: '100g' },
+  { name: 'Egg (boiled)',        calories: 78,  protein: 6,   carbs: 0.6, fat: 5,   serving: '1 egg 50g' },
+  { name: 'Moong Dal',           calories: 105, protein: 7,   carbs: 18,  fat: 0.4, serving: '100g' },
+  { name: 'Puri',                calories: 150, protein: 2.5, carbs: 18,  fat: 8,   serving: '1 piece 30g' },
+  { name: 'Uttapam',             calories: 107, protein: 3,   carbs: 18,  fat: 2.5, serving: '1 medium 80g' },
+  { name: 'Khichdi',             calories: 97,  protein: 4,   carbs: 18,  fat: 1.5, serving: '100g' },
+  { name: 'Bhindi Masala',       calories: 65,  protein: 2,   carbs: 8,   fat: 3,   serving: '100g' },
+  { name: 'Aloo Sabzi',          calories: 95,  protein: 1.8, carbs: 16,  fat: 3,   serving: '100g' },
+  { name: 'Chai (with milk)',    calories: 30,  protein: 1.5, carbs: 4,   fat: 1,   serving: '1 cup 150ml' },
+  { name: 'Lassi (sweet)',       calories: 78,  protein: 3,   carbs: 12,  fat: 2,   serving: '200ml' },
+];
+
 const MEAL_TAGS = [
   { key: 'on_plan', label: '🟢 On Plan', color: '#4CAF7C' },
   { key: 'treat',   label: '🎉 Treat',   color: '#DAA520' },
@@ -994,7 +1024,7 @@ export default function LogScreen({ navigation }) {
                   </View>
 
                   {/* Results */}
-                  <ScrollView style={{ maxHeight: 280, marginTop: 10 }} keyboardShouldPersistTaps="handled">
+                  <ScrollView style={{ maxHeight: 320, marginTop: 10 }} keyboardShouldPersistTaps="handled">
                     {afSearching && (
                       <ActivityIndicator color={accentColor} style={{ marginVertical: 16 }} />
                     )}
@@ -1020,6 +1050,27 @@ export default function LogScreen({ navigation }) {
                         </Text>
                       </TouchableOpacity>
                     ))}
+
+                    {/* Indian food quick-add (shown when search is empty) */}
+                    {!afSearching && afSearchQ.trim() === '' && (
+                      <>
+                        <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, letterSpacing: 1, paddingVertical: 8 }}>
+                          🇮🇳 QUICK ADD — INDIAN FOODS
+                        </Text>
+                        {INDIAN_FOODS.map((item, i) => (
+                          <TouchableOpacity
+                            key={i}
+                            onPress={() => selectFoodResult(item)}
+                            style={{ paddingVertical: 9, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: mc.border }}
+                          >
+                            <Text style={{ fontFamily: F.mono, fontSize: 12, color: mc.text }}>{item.name}</Text>
+                            <Text style={{ fontFamily: F.mono, fontSize: 10, color: accentColor }}>
+                              {item.calories} kcal · {item.protein}g P · {item.carbs}g C · {item.serving}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </>
+                    )}
                   </ScrollView>
 
                   {/* Actions */}

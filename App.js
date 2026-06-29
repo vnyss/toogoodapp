@@ -19,9 +19,18 @@ import SocialsScreen    from './src/screens/SocialsScreen';
 import ProfileScreen    from './src/screens/ProfileScreen';
 import MonitorScreen    from './src/screens/MonitorScreen';
 import SettingsScreen   from './src/screens/SettingsScreen';
-import ChallengesScreen from './src/screens/ChallengesScreen';
-import ClubsScreen      from './src/screens/ClubsScreen';
-import SegmentsScreen   from './src/screens/SegmentsScreen';
+import ChallengesScreen    from './src/screens/ChallengesScreen';
+import ClubsScreen         from './src/screens/ClubsScreen';
+import SegmentsScreen      from './src/screens/SegmentsScreen';
+import FastingScreen       from './src/screens/FastingScreen';
+import PeriodScreen        from './src/screens/PeriodScreen';
+import HealthRiskScreen    from './src/screens/HealthRiskScreen';
+import RecipeScreen        from './src/screens/RecipeScreen';
+import MealPlanScreen      from './src/screens/MealPlanScreen';
+import TransformationScreen from './src/screens/TransformationScreen';
+import RemindersScreen     from './src/screens/RemindersScreen';
+import NutrientsScreen     from './src/screens/NutrientsScreen';
+import BMIScreen           from './src/screens/BMIScreen';
 
 const SCREENS = {
   dashboard:  DashboardScreen,
@@ -37,9 +46,18 @@ const SCREENS = {
   profile:    ProfileScreen,
   monitor:    MonitorScreen,
   settings:   SettingsScreen,
-  challenges: ChallengesScreen,
-  clubs:      ClubsScreen,
-  segments:   SegmentsScreen,
+  challenges:      ChallengesScreen,
+  clubs:           ClubsScreen,
+  segments:        SegmentsScreen,
+  fasting:         FastingScreen,
+  period:          PeriodScreen,
+  healthrisk:      HealthRiskScreen,
+  recipe:          RecipeScreen,
+  mealplan:        MealPlanScreen,
+  transformation:  TransformationScreen,
+  reminders:       RemindersScreen,
+  nutrients:       NutrientsScreen,
+  bmi:             BMIScreen,
 };
 
 /* ── SVG icons matching the website ── */
@@ -61,7 +79,16 @@ function Icon({ name, size = 14, color }) {
   if (name === 'settings')   return <Svg {...p}><Circle cx={12} cy={12} r={3} /><Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></Svg>;
   if (name === 'challenges') return <Svg {...p}><Path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><Path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><Path d="M4 22h16" /><Path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" /><Path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" /><Path d="M18 2H6v7a6 6 0 0 0 12 0V2z" /></Svg>;
   if (name === 'clubs')      return <Svg {...p}><Path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><Circle cx={9} cy={7} r={4} /><Path d="M23 21v-2a4 4 0 0 0-3-3.87" /><Path d="M16 3.13a4 4 0 0 1 0 7.75" /></Svg>;
-  if (name === 'segments')   return <Svg {...p}><Path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><Line x1={4} y1={22} x2={4} y2={15} /></Svg>;
+  if (name === 'segments')     return <Svg {...p}><Path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><Line x1={4} y1={22} x2={4} y2={15} /></Svg>;
+  if (name === 'fasting')      return <Svg {...p}><Circle cx={12} cy={12} r={10} /><Path d="M12 6v6l4 2" /></Svg>;
+  if (name === 'period')       return <Svg {...p}><Path d="M12 22c5.5-4 10-8.5 10-13a10 10 0 0 0-20 0c0 4.5 4.5 9 10 13z" /></Svg>;
+  if (name === 'healthrisk')   return <Svg {...p}><Path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></Svg>;
+  if (name === 'recipe')       return <Svg {...p}><Path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><Path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></Svg>;
+  if (name === 'mealplan')     return <Svg {...p}><Rect x={3} y={4} width={18} height={18} rx={2} /><Line x1={3} y1={10} x2={21} y2={10} /><Line x1={8} y1={2} x2={8} y2={6} /><Line x1={16} y1={2} x2={16} y2={6} /><Line x1={8} y1={14} x2={16} y2={14} /></Svg>;
+  if (name === 'transformation')return <Svg {...p}><Circle cx={12} cy={12} r={3} /><Path d="M6.5 6.5h11M6.5 17.5h11" /></Svg>;
+  if (name === 'reminders')    return <Svg {...p}><Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><Path d="M13.73 21a2 2 0 0 1-3.46 0" /></Svg>;
+  if (name === 'nutrients')    return <Svg {...p}><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></Svg>;
+  if (name === 'bmi')          return <Svg {...p}><Circle cx={12} cy={12} r={10} /><Line x1={2} y1={12} x2={22} y2={12} /><Path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></Svg>;
   return null;
 }
 
@@ -92,7 +119,7 @@ function NavItem({ navKey, label, iconName, active, onPress, sub }) {
 }
 
 /* ── Sidebar — matches _sidebar.html exactly ── */
-function Sidebar({ screen, navigate, username, onLogout }) {
+function Sidebar({ screen, navigate, username, onLogout, userGender }) {
   const { mc, accentColor, accentDim } = useTheme();
   return (
     <View style={[sb.sidebar, { backgroundColor: mc.sidebar, borderRightColor: mc.border }]}>
@@ -140,7 +167,21 @@ function Sidebar({ screen, navigate, username, onLogout }) {
 
         {/* Health section */}
         <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Health</Text>
-        <NavItem navKey="monitor" label="Blood Monitor" iconName="monitor" active={screen === 'monitor'} onPress={navigate} />
+        <NavItem navKey="monitor"        label="Blood Monitor"    iconName="monitor"        active={screen === 'monitor'}        onPress={navigate} />
+        <NavItem navKey="bmi"            label="BMI & Metrics"    iconName="bmi"            active={screen === 'bmi'}            onPress={navigate} />
+        <NavItem navKey="healthrisk"     label="Health Risk"      iconName="healthrisk"     active={screen === 'healthrisk'}     onPress={navigate} />
+        <NavItem navKey="reminders"      label="Reminders"        iconName="reminders"      active={screen === 'reminders'}      onPress={navigate} />
+        {(userGender === 'female' || userGender === '') && (
+          <NavItem navKey="period" label="Period Tracker" iconName="period" active={screen === 'period'} onPress={navigate} />
+        )}
+
+        {/* Nutrition section */}
+        <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Nutrition</Text>
+        <NavItem navKey="nutrients"      label="Nutrients"        iconName="nutrients"      active={screen === 'nutrients'}      onPress={navigate} />
+        <NavItem navKey="recipe"         label="Recipe Builder"   iconName="recipe"         active={screen === 'recipe'}         onPress={navigate} />
+        <NavItem navKey="mealplan"       label="Meal Plan"        iconName="mealplan"       active={screen === 'mealplan'}       onPress={navigate} />
+        <NavItem navKey="fasting"        label="Fasting Tracker"  iconName="fasting"        active={screen === 'fasting'}        onPress={navigate} />
+        <NavItem navKey="transformation" label="Transformation"   iconName="transformation" active={screen === 'transformation'} onPress={navigate} />
 
         {/* Settings — outside sections, before .sb-bottom */}
         <View style={sb.settingsSep} />
@@ -166,6 +207,7 @@ function Sidebar({ screen, navigate, username, onLogout }) {
 export default function App() {
   const [screen,      setScreen]      = useState('loading');
   const [username,    setUsername]    = useState('');
+  const [userGender,  setUserGender]  = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
@@ -177,6 +219,14 @@ export default function App() {
         setUsername(u || '');
         const saved = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('tg_screen') : null;
         setScreen(saved && SCREENS[saved] ? saved : 'dashboard');
+        // Fetch gender for period tracker visibility
+        try {
+          const res = await fetch('http://localhost:5000/api/v1/me', {
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+          });
+          const d = await res.json();
+          setUserGender((d.gender || '').toLowerCase());
+        } catch {}
       } else {
         setScreen('login');
       }
@@ -208,7 +258,7 @@ export default function App() {
       <View style={styles.root}>
         {/* Desktop: always-visible sidebar */}
         {!isMobile && (
-          <Sidebar screen={screen} navigate={persistScreen} username={username} onLogout={handleLogout} />
+          <Sidebar screen={screen} navigate={persistScreen} username={username} onLogout={handleLogout} userGender={userGender} />
         )}
 
         <View style={styles.content}>
@@ -240,6 +290,7 @@ export default function App() {
                 navigate={(s) => { persistScreen(s); setSidebarOpen(false); }}
                 username={username}
                 onLogout={handleLogout}
+                userGender={userGender}
               />
             </View>
           </>
