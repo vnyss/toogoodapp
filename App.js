@@ -27,6 +27,8 @@ import ExerciseLibraryScreen from './src/screens/ExerciseLibraryScreen';
 import GymProgressScreen    from './src/screens/GymProgressScreen';
 import GymToolsScreen       from './src/screens/GymToolsScreen';
 import StepTrackerScreen    from './src/screens/StepTrackerScreen';
+import WaterTrackerScreen   from './src/screens/WaterTrackerScreen';
+import SleepTrackerScreen   from './src/screens/SleepTrackerScreen';
 import GuidedWorkoutScreen  from './src/screens/GuidedWorkoutScreen';
 import WorkoutProgramsScreen from './src/screens/WorkoutProgramsScreen';
 import HIITTimerScreen      from './src/screens/HIITTimerScreen';
@@ -59,6 +61,8 @@ const SCREENS = {
   gymprogress:     GymProgressScreen,
   gymtools:        GymToolsScreen,
   steps:           StepTrackerScreen,
+  water:           WaterTrackerScreen,
+  sleep:           SleepTrackerScreen,
   guidedworkout:   GuidedWorkoutScreen,
   programs:        WorkoutProgramsScreen,
   hiittimer:       HIITTimerScreen,
@@ -101,6 +105,8 @@ function Icon({ name, size = 14, color }) {
   if (name === 'gymprogress')  return <Svg {...p}><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></Svg>;
   if (name === 'gymtools')     return <Svg {...p}><Circle cx={12} cy={12} r={3} /><Path d="m12 1 1 4h-2zm0 22-1-4h2zM4.22 4.22l2.83 2.83-1.42 1.42zm13.95 13.95 2.83 2.83-1.42-1.42zM1 12l4-1v2zm22 0-4 1v-2zM4.22 19.78l2.83-2.83-1.42-1.42zm13.95-13.95 2.83-2.83-1.42 1.42z" /></Svg>;
   if (name === 'steps')         return <Svg {...p}><Path d="M13 4v16M7 8v12M19 2v18M1 12v8" /></Svg>;
+  if (name === 'water')         return <Svg {...p}><Path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" /></Svg>;
+  if (name === 'sleep')         return <Svg {...p}><Path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></Svg>;
   if (name === 'guidedworkout') return <Svg {...p}><Path d="M5 3l14 9-14 9V3z" /></Svg>;
   if (name === 'programs')     return <Svg {...p}><Rect x={3} y={4} width={18} height={18} rx={2} /><Path d="M16 2v4M8 2v4M3 10h18" /><Path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></Svg>;
   if (name === 'hiittimer')    return <Svg {...p}><Circle cx={12} cy={12} r={10} /><Path d="M12 6v6l3 3" /><Path d="M16.24 7.76 18 6" /></Svg>;
@@ -202,6 +208,8 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
         {/* Health section */}
         <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Health</Text>
         <NavItem navKey="steps"          label="Step Tracker"     iconName="steps"          active={screen === 'steps'}          onPress={navigate} />
+        <NavItem navKey="water"          label="Water Tracker"    iconName="water"          active={screen === 'water'}          onPress={navigate} />
+        <NavItem navKey="sleep"          label="Sleep Tracker"    iconName="sleep"          active={screen === 'sleep'}          onPress={navigate} />
         <NavItem navKey="monitor"        label="Blood Monitor"    iconName="monitor"        active={screen === 'monitor'}        onPress={navigate} />
         <NavItem navKey="bmi"            label="BMI & Metrics"    iconName="bmi"            active={screen === 'bmi'}            onPress={navigate} />
         <NavItem navKey="healthrisk"     label="Health Risk"      iconName="healthrisk"     active={screen === 'healthrisk'}     onPress={navigate} />
