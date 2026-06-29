@@ -26,6 +26,9 @@ import WorkoutScreen        from './src/screens/WorkoutScreen';
 import ExerciseLibraryScreen from './src/screens/ExerciseLibraryScreen';
 import GymProgressScreen    from './src/screens/GymProgressScreen';
 import GymToolsScreen       from './src/screens/GymToolsScreen';
+import GuidedWorkoutScreen  from './src/screens/GuidedWorkoutScreen';
+import WorkoutProgramsScreen from './src/screens/WorkoutProgramsScreen';
+import HIITTimerScreen      from './src/screens/HIITTimerScreen';
 import FastingScreen        from './src/screens/FastingScreen';
 import PeriodScreen        from './src/screens/PeriodScreen';
 import HealthRiskScreen    from './src/screens/HealthRiskScreen';
@@ -54,6 +57,9 @@ const SCREENS = {
   exerciselibrary: ExerciseLibraryScreen,
   gymprogress:     GymProgressScreen,
   gymtools:        GymToolsScreen,
+  guidedworkout:   GuidedWorkoutScreen,
+  programs:        WorkoutProgramsScreen,
+  hiittimer:       HIITTimerScreen,
   challenges:      ChallengesScreen,
   clubs:           ClubsScreen,
   segments:        SegmentsScreen,
@@ -92,6 +98,9 @@ function Icon({ name, size = 14, color }) {
   if (name === 'exerciselibrary') return <Svg {...p}><Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></Svg>;
   if (name === 'gymprogress')  return <Svg {...p}><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></Svg>;
   if (name === 'gymtools')     return <Svg {...p}><Circle cx={12} cy={12} r={3} /><Path d="m12 1 1 4h-2zm0 22-1-4h2zM4.22 4.22l2.83 2.83-1.42 1.42zm13.95 13.95 2.83 2.83-1.42-1.42zM1 12l4-1v2zm22 0-4 1v-2zM4.22 19.78l2.83-2.83-1.42-1.42zm13.95-13.95 2.83-2.83-1.42 1.42z" /></Svg>;
+  if (name === 'guidedworkout') return <Svg {...p}><Path d="M5 3l14 9-14 9V3z" /></Svg>;
+  if (name === 'programs')     return <Svg {...p}><Rect x={3} y={4} width={18} height={18} rx={2} /><Path d="M16 2v4M8 2v4M3 10h18" /><Path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></Svg>;
+  if (name === 'hiittimer')    return <Svg {...p}><Circle cx={12} cy={12} r={10} /><Path d="M12 6v6l3 3" /><Path d="M16.24 7.76 18 6" /></Svg>;
   if (name === 'fasting')      return <Svg {...p}><Circle cx={12} cy={12} r={10} /><Path d="M12 6v6l4 2" /></Svg>;
   if (name === 'period')       return <Svg {...p}><Path d="M12 22c5.5-4 10-8.5 10-13a10 10 0 0 0-20 0c0 4.5 4.5 9 10 13z" /></Svg>;
   if (name === 'healthrisk')   return <Svg {...p}><Path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></Svg>;
@@ -169,6 +178,9 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
         {/* Gym section */}
         <Text style={[sb.sectionLabel, { marginTop: 12, color: mc.text3 }]}>Gym</Text>
         <NavItem navKey="workout"         label="Workout Tracker"   iconName="workout"         active={screen === 'workout'}         onPress={navigate} />
+        <NavItem navKey="guidedworkout"   label="Guided Workouts"   iconName="guidedworkout"   active={screen === 'guidedworkout'}   onPress={navigate} />
+        <NavItem navKey="programs"        label="Programs & Plans"  iconName="programs"        active={screen === 'programs'}        onPress={navigate} />
+        <NavItem navKey="hiittimer"       label="HIIT Timer"        iconName="hiittimer"       active={screen === 'hiittimer'}       onPress={navigate} />
         <NavItem navKey="exerciselibrary" label="Exercise Library"  iconName="exerciselibrary" active={screen === 'exerciselibrary'} onPress={navigate} />
         <NavItem navKey="gymprogress"     label="Gym Progress"      iconName="gymprogress"     active={screen === 'gymprogress'}     onPress={navigate} />
         <NavItem navKey="gymtools"        label="Gym Tools"         iconName="gymtools"        active={screen === 'gymtools'}        onPress={navigate} />
