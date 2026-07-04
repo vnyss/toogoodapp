@@ -81,7 +81,7 @@ export default function ExerciseLibraryScreen() {
             <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text }}>{detail.equipment}</Text>
             {tips[detail.equipment] && (
               <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, marginTop: 8, lineHeight: 18 }}>
-                💡 {tips[detail.equipment]}
+                {tips[detail.equipment]}
               </Text>
             )}
           </View>

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { saveProfile } from '../api';
+import { markOnboardingDone } from '../auth';
 
-const MONO    = "'Courier Prime', monospace";
-const DISPLAY = "'Special Elite', monospace";
+const MONO    = "'JetBrains Mono', monospace";
+const DISPLAY = "'Inter', sans-serif";
 const GOLD    = '#C9A84C';
-const BG      = '#080808';
-const CARD    = '#0F0F0F';
+const BG      = '#000000';
+const CARD    = '#0A0A0A';
 const TEXT    = '#E8DCC8';
 const TEXT2   = '#8A7A62';
 const TEXT3   = '#50422E';
@@ -117,8 +118,9 @@ export default function OnboardingScreen({ navigation }) {
     return Math.round((ft * 12 + ins) * 2.54);
   }
 
-  // Step 3 — goal
-  const [goal, setGoal] = useState('');
+  // Step 3 — goals (multi-select)
+  const [goals, setGoals] = useState([]);
+  function toggleGoal(v) { setGoals(prev => prev.includes(v) ? prev.filter(g => g !== v) : [...prev, v]); }
 
   // Step 4 — lifestyle
   const [activity, setActivity] = useState('');
@@ -163,7 +165,7 @@ export default function OnboardingScreen({ navigation }) {
     if (step === 2 && (heightUnit === 'cm' ? !heightCm : (!heightFt && !heightIn))) { setError('Please enter your height.'); return; }
     if (step === 2 && isNaN(resolvedWeightKg())) { setError('Please enter your current weight.'); return; }
     if (step === 2 && (weightUnit === 'kg' ? !weightKg : !weightLbs)) { setError('Please enter your current weight.'); return; }
-    if (step === 3 && !goal) { setError('Please pick a goal.'); return; }
+    if (step === 3 && goals.length === 0) { setError('Please pick at least one goal.'); return; }
     if (step === 4 && !activity) { setError('Please pick your activity level.'); return; }
     if (step < TOTAL_STEPS) { setStep(s => s + 1); return; }
     finish();
@@ -182,18 +184,20 @@ export default function OnboardingScreen({ navigation }) {
         height_cm:        Math.round(hcm),
         weight_kg:        Math.round(wkg * 10) / 10,
         target_weight_kg: (!isNaN(tkg) && tkg > 0) ? Math.round(tkg * 10) / 10 : undefined,
-        goal,
+        goal: goals.join(', '),
         activity_level:   activity,
         mobility_note:    mobility,
         food_prefs:       foodPrefs.join(', '),
       });
     } catch {}
+    await markOnboardingDone();
     setSaving(false);
     navigation.navigate('dashboard');
   }
 
-  function skip() {
+  async function skip() {
     if (step < TOTAL_STEPS) { setStep(s => s + 1); return; }
+    await markOnboardingDone();
     navigation.navigate('dashboard');
   }
 
@@ -314,12 +318,17 @@ export default function OnboardingScreen({ navigation }) {
             </View>
           )}
 
-          {/* ── Step 3: Goal ── */}
+          {/* ── Step 3: Goal (multi-select) ── */}
           {step === 3 && (
-            <View style={st.optList}>
-              {GOALS.map(([v, l, s]) => (
-                <OptionCard key={v} label={l} sub={s} selected={goal === v} onPress={() => setGoal(v)} />
-              ))}
+            <View>
+              <Text style={{ fontFamily: MONO, fontSize: 10, color: TEXT3, letterSpacing: 2, marginBottom: 14 }}>
+                Select all that apply
+              </Text>
+              <View style={st.optList}>
+                {GOALS.map(([v, l, s]) => (
+                  <OptionCard key={v} label={l} sub={s} selected={goals.includes(v)} onPress={() => toggleGoal(v)} />
+                ))}
+              </View>
             </View>
           )}
 

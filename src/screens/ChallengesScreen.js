@@ -13,6 +13,7 @@ import { C, F, S } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getChallenges, getChallengeLb } from '../api';
 import { getToken, getUser } from '../auth';
+import { ProgressRing } from '../components/Charts';
 
 const METRIC_UNIT = {
   workouts:   'workouts',
@@ -123,6 +124,12 @@ export default function ChallengesScreen({ navigation }) {
       minWidth: 320,
       flex: 1,
       position: 'relative',
+    },
+    chTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+      marginBottom: 4,
     },
     chCardCompleted: {
       borderColor: 'rgba(76,175,130,0.4)',
@@ -387,8 +394,21 @@ export default function ChallengesScreen({ navigation }) {
                     </View>
                   )}
 
-                  {/* Title */}
-                  <Text style={st.chTitle}>{ch.title}</Text>
+                  {/* Title + progress ring */}
+                  <View style={st.chTop}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.chTitle}>{ch.title}</Text>
+                    </View>
+                    <ProgressRing
+                      value={ch.my_progress || 0}
+                      max={ch.target || 1}
+                      color={done ? C.green : accentColor}
+                      mc={mc}
+                      size={64}
+                      strokeWidth={6}
+                      label={`${pct}%`}
+                    />
+                  </View>
 
                   {/* Description */}
                   <Text style={st.chDesc}>{ch.description}</Text>

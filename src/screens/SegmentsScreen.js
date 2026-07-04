@@ -3,10 +3,12 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   ActivityIndicator, TextInput, Modal,
 } from 'react-native';
+import Svg, { Line } from 'react-native-svg';
 import { C, F, S } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getSegments, createSegment, getSegmentDetail, logEffort, deleteSegment } from '../api';
 import { getUser } from '../auth';
+import { TrendLine, BarChart } from '../components/Charts';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -38,11 +40,11 @@ function formatPace(minPerKm) {
 
 const CATS = [
   { v: 'all',     l: 'All',     emoji: '' },
-  { v: 'run',     l: 'Run',     emoji: '🏃' },
-  { v: 'gym',     l: 'Gym',     emoji: '🏋️' },
-  { v: 'cycle',   l: 'Cycle',   emoji: '🚴' },
-  { v: 'swim',    l: 'Swim',    emoji: '🏊' },
-  { v: 'general', l: 'General', emoji: '⚡' },
+  { v: 'run',     l: 'Run',     emoji: '' },
+  { v: 'gym',     l: 'Gym',     emoji: '' },
+  { v: 'cycle',   l: 'Cycle',   emoji: '' },
+  { v: 'swim',    l: 'Swim',    emoji: '' },
+  { v: 'general', l: 'General', emoji: '' },
 ];
 
 const GPS_CATS = new Set(['run', 'cycle', 'swim']);
@@ -254,7 +256,9 @@ function ActivityTracker({ visible, segment, onSave, onClose }) {
         <View style={st.header}>
           <Text style={st.headerTxt}>START {verb.toUpperCase()}</Text>
           <TouchableOpacity onPress={() => { stopAll(); onClose(); }} style={st.closeBtn}>
-            <Text style={st.closeTxt}>✕</Text>
+            <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={2} strokeLinecap="round">
+              <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+            </Svg>
           </TouchableOpacity>
         </View>
 
@@ -562,7 +566,7 @@ export default function SegmentsScreen({ navigation }) {
     return (
       <TouchableOpacity style={[st.segItem, isActive && st.segItemSel]} onPress={() => loadDetail(s.id)} activeOpacity={0.7}>
         <View style={st.segTop}>
-          <Text style={st.segCatPill}>{cat?.emoji} {cat?.l || s.category}</Text>
+          <Text style={st.segCatPill}>{cat?.l || s.category}</Text>
           <Text style={st.segName} numberOfLines={1}>{s.name}</Text>
         </View>
         <Text style={st.segMeta}>
@@ -578,7 +582,7 @@ export default function SegmentsScreen({ navigation }) {
     if (!activeId && !detailLoad) {
       return (
         <View style={st.emptyState}>
-          <Text style={st.emptyIcon}>⚡</Text>
+          <Text style={st.emptyIcon}></Text>
           <Text style={st.emptyText}>Select a segment to view its leaderboard</Text>
           <Text style={st.emptyHint}>
             Segments are workout challenges — fastest time,{'\n'}most reps, or longest distance wins.
@@ -601,7 +605,7 @@ export default function SegmentsScreen({ navigation }) {
         <View style={st.segHero}>
           <View style={{ flex: 1 }}>
             <Text style={st.segHeroName}>{seg.name}</Text>
-            <Text style={st.segHeroMeta}>{cat?.emoji} {seg.cat_label}  ·  Measured by: {seg.metric_label}</Text>
+            <Text style={st.segHeroMeta}>{seg.cat_label}  ·  Measured by: {seg.metric_label}</Text>
             {!!seg.description && <Text style={[st.segHeroMeta, { marginTop: 4 }]}>{seg.description}</Text>}
           </View>
           <View style={st.segHeroActions}>
@@ -631,7 +635,7 @@ export default function SegmentsScreen({ navigation }) {
         {kom && (
           <View style={st.komBanner}>
             <View style={{ flex: 1 }}>
-              <Text style={st.komLabel}>👑 {isGps ? 'King of the Segment' : 'Top Performer'}</Text>
+              <Text style={st.komLabel}>{isGps ? 'King of the Segment' : 'Top Performer'}</Text>
               <Text style={st.komName}>{kom.name}</Text>
             </View>
             <Text style={st.komPb}>{kom.pb_fmt}</Text>
@@ -644,12 +648,23 @@ export default function SegmentsScreen({ navigation }) {
           {/* Leaderboard */}
           <View style={{ flex: 1, marginRight: 16 }}>
             <Text style={S.sectionHead}>Leaderboard — Personal Bests</Text>
+            {board?.length > 1 && (
+              <View style={[st.panelBox, { marginBottom: 16 }]}>
+                <Text style={st.pbLabel}>Top Performers</Text>
+                <BarChart
+                  data={board.slice(0, 8).map(b => ({ label: (b.name || b.username || '').slice(0, 6), v: b.pb || 0 }))}
+                  color={accentColor}
+                  mc={mc}
+                  height={80}
+                />
+              </View>
+            )}
             {board?.length > 0 ? board.map((b, i) => {
               const isMe = b.username === me;
               return (
                 <View key={b.username || i} style={[st.lbRow, i === board.length - 1 && { borderBottomWidth: 0 }]}>
                   <Text style={[st.lbRank, b.rank <= 3 && { color: accentColor }]}>
-                    {b.rank === 1 ? '🥇' : b.rank === 2 ? '🥈' : b.rank === 3 ? '🥉' : b.rank}
+                    {b.rank}
                   </Text>
                   <Text style={[st.lbName, isMe && { color: accentColor, fontWeight: '700' }]} numberOfLines={1}>
                     {b.name || ('@' + b.username)}
@@ -674,6 +689,20 @@ export default function SegmentsScreen({ navigation }) {
             )}
             <View style={st.panelBox}>
               <Text style={S.sectionHead}>Your History</Text>
+              {my_history?.length > 1 && (
+                <View style={{ marginBottom: 12 }}>
+                  <TrendLine
+                    points={[...my_history].reverse().map((h, i) => ({ x: i, y: h.value }))}
+                    color={accentColor}
+                    mc={mc}
+                    height={80}
+                    showDots
+                  />
+                  <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, textAlign: 'right', marginTop: 2 }}>
+                    Oldest → newest
+                  </Text>
+                </View>
+              )}
               {my_history?.length > 0 ? my_history.map((h, i) => (
                 <View key={i} style={[st.histRow, i === my_history.length - 1 && { borderBottomWidth: 0 }]}>
                   <Text style={st.histVal}>{h.fmt}</Text>
@@ -720,7 +749,6 @@ export default function SegmentsScreen({ navigation }) {
               </View>
             ) : filtered.length === 0 ? (
               <View style={{ padding: 24, alignItems: 'center', gap: 8 }}>
-                <Text style={{ fontFamily: F.serif, fontSize: 28, color: mc.text3 }}>⚡</Text>
                 <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, textAlign: 'center', letterSpacing: 1 }}>
                   {filter === 'all' ? 'No segments yet' : `No ${filter} segments`}
                 </Text>
@@ -778,7 +806,7 @@ export default function SegmentsScreen({ navigation }) {
             <View style={st.catGrid}>
               {CATS.filter(c => c.v !== 'all').map(c => (
                 <TouchableOpacity key={c.v} style={[st.catBtn, csCat === c.v && st.catBtnA]} onPress={() => setCsCat(c.v)}>
-                  <Text style={[st.catTxt, csCat === c.v && { color: accentColor }]}>{c.emoji} {c.l}</Text>
+                  <Text style={[st.catTxt, csCat === c.v && { color: accentColor }]}>{c.l}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -797,7 +825,7 @@ export default function SegmentsScreen({ navigation }) {
             <View style={[st.modalBtns, { marginTop: 20 }]}>
               <TouchableOpacity style={st.btnCancel} onPress={() => setShowCreate(false)}><Text style={st.btnCancelText}>Cancel</Text></TouchableOpacity>
               <TouchableOpacity style={st.btnSubmit} onPress={submitCreate} disabled={creating}>
-                {creating ? <ActivityIndicator size="small" color="#0A0A0A" /> : <Text style={st.btnSubmitText}>{GPS_CATS.has(csCat) ? `Create & Start ${CAT_VERB[csCat]}` : 'Create'}</Text>}
+                {creating ? <ActivityIndicator size="small" color="#0A0A0A" /> : <Text style={st.btnSubmitText}>{GPS_CATS.has(csCat) ? 'Create & Start' : 'Create'}</Text>}
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

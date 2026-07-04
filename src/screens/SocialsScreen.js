@@ -495,7 +495,7 @@ export default function SocialsScreen({ navigation }) {
 
   if (activeBuddy) {
     return (
-      <View style={S.screen}>
+      <View style={{ flex: 1, backgroundColor: mc.bg }}>
         <BuddyFeed buddy={activeBuddy} me={me} onBack={() => setActiveBuddy(null)} st={st} mc={mc} accentColor={accentColor} />
         {!!toast && <View style={st.toast}><Text style={st.toastTxt}>{toast}</Text></View>}
       </View>
@@ -503,7 +503,7 @@ export default function SocialsScreen({ navigation }) {
   }
 
   return (
-    <View style={S.screen}>
+    <View style={{ flex: 1, backgroundColor: mc.bg }}>
       {/* Header + Search */}
       <View style={st.panelHead}>
         <Text style={st.panelTitle}>Socials</Text>

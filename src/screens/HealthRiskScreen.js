@@ -7,10 +7,10 @@ import { getToken } from '../auth';
 import { API_BASE } from '../config';
 
 const RISKS = [
-  { key: 'diabetes',   label: 'Type 2 Diabetes',     icon: '🩸' },
-  { key: 'hypertension', label: 'Hypertension',       icon: '💓' },
-  { key: 'heart',      label: 'Cardiovascular',       icon: '❤️' },
-  { key: 'obesity',    label: 'Obesity Risk',         icon: '⚖️' },
+  { key: 'diabetes',     label: 'Type 2 Diabetes' },
+  { key: 'hypertension', label: 'Hypertension' },
+  { key: 'heart',        label: 'Cardiovascular' },
+  { key: 'obesity',      label: 'Obesity Risk' },
 ];
 
 function RiskGauge({ score, color }) {
@@ -223,7 +223,7 @@ export default function HealthRiskScreen() {
                 <View key={r.key} style={s.riskRow}>
                   <RiskGauge score={sc} color={col} />
                   <View style={{ flex: 1, marginLeft: 14 }}>
-                    <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text }}>{r.icon} {r.label}</Text>
+                    <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text }}>{r.label}</Text>
                     <Text style={{ fontFamily: F.mono, fontSize: 11, color: col, marginTop: 2 }}>{lbl} risk</Text>
                     <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, marginTop: 4 }}>{rec}</Text>
                   </View>
@@ -232,6 +232,13 @@ export default function HealthRiskScreen() {
             })}
           </View>
         )}
+
+        <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, letterSpacing: 0.5, lineHeight: 15, marginTop: 4 }}>
+          Methodology references the hazard identification → exposure assessment → risk characterization
+          framework described in the WHO/ILO/UNEP Human Health Risk Assessment Toolkit (IPCS
+          Harmonization Project Document No. 8), adapted here to lifestyle risk factors rather than chemical
+          exposure. This is an educational estimate, not a medical diagnosis — consult a doctor for clinical advice.
+        </Text>
       </View>
     </ScrollView>
   );

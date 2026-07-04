@@ -1,1 +1,1 @@
-﻿export const API_BASE = 'https://metabollism.onrender.com';
+﻿export const API_BASE = 'http://localhost:5000';

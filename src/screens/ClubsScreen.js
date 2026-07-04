@@ -7,6 +7,7 @@ import { C, F, S } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getClubs, createClub, joinClub, leaveClub, getClubDetail, getClubFeed } from '../api';
 import { getToken, getUser } from '../auth';
+import { StatBar } from '../components/Charts';
 
 const LBLS = {
   login:        'checked in',
@@ -153,6 +154,26 @@ export default function ClubsScreen({ navigation }) {
     );
   }
 
+  // ─── Render member activity leaderboard (relative bars) ──────────────────────
+  function MemberActivityChart({ members }) {
+    const topXp = Math.max(...members.map(m => m.month_xp || 0), 1);
+    return (
+      <View style={{ marginTop: 4 }}>
+        {members.map(m => (
+          <StatBar
+            key={m.username}
+            label={`@${m.username}${m.is_me ? ' (you)' : ''}`}
+            value={m.month_xp || 0}
+            max={topXp}
+            color={m.is_me ? accentColor : mc.text3}
+            mc={mc}
+            displayValue={`${(m.month_xp || 0).toLocaleString()} XP`}
+          />
+        ))}
+      </View>
+    );
+  }
+
   // ─── Main detail pane ────────────────────────────────────────────────────────
   function DetailPane() {
     if (!activeId && !detailLoad) {
@@ -234,6 +255,12 @@ export default function ClubsScreen({ navigation }) {
                 : <Text style={st.noDataTxt}>No members yet.</Text>
               }
             </View>
+            {members.length > 0 && (
+              <View style={[st.panelBox, { marginTop: 16 }]}>
+                <Text style={S.sectionHead}>Activity vs. Top Member</Text>
+                <MemberActivityChart members={members} />
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>

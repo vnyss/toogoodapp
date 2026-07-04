@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { F } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getUser } from '../auth';
+import { TrendLine } from '../components/Charts';
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function fmtDate(iso) {
@@ -18,6 +19,7 @@ export default function TransformationScreen() {
   const [compareB,    setCompareB]    = useState(null);
   const [showCompare, setShowCompare] = useState(false);
   const [full,        setFull]        = useState(null);
+  const [weightLogs,  setWeightLogs]  = useState([]);
   const fileInputRef  = useRef(null);
 
   useEffect(() => {
@@ -26,8 +28,17 @@ export default function TransformationScreen() {
       setStorageKey(key);
       const raw = await AsyncStorage.getItem(key);
       if (raw) setPhotos(JSON.parse(raw));
+
+      const dailyRaw = await AsyncStorage.getItem(`toogood_daily_logs_${u}`);
+      if (dailyRaw) setWeightLogs(JSON.parse(dailyRaw));
     });
   }, []);
+
+  const weightPts = weightLogs
+    .filter(d => d.weight && parseFloat(d.weight) > 0)
+    .map(d => ({ x: d.date, y: parseFloat(d.weight) }))
+    .sort((a, b) => a.x.localeCompare(b.x))
+    .slice(-60);
 
   async function persist(updated) {
     if (!storageKey) return;
@@ -85,13 +96,23 @@ export default function TransformationScreen() {
         <Text style={st.sub}>TRACK YOUR VISUAL PROGRESS</Text>
 
         <TouchableOpacity style={st.addBtn} onPress={() => Platform.OS === 'web' && fileInputRef.current?.click()}>
-          <Text style={st.addTxt}>📷  ADD PROGRESS PHOTO</Text>
+          <Text style={st.addTxt}>ADD PROGRESS PHOTO</Text>
         </TouchableOpacity>
 
         {Platform.OS === 'web' && React.createElement('input', {
           ref: fileInputRef, type: 'file', accept: 'image/*',
           style: { display: 'none' }, onChange: handleFileChange,
         })}
+
+        {weightPts.length >= 2 && (
+          <View style={{ borderWidth: 1, borderColor: mc.border, padding: 16, marginBottom: 24 }}>
+            <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, letterSpacing: 1, marginBottom: 10 }}>WEIGHT TREND</Text>
+            <TrendLine points={weightPts} color={accentColor} mc={mc} height={110} showDots fill />
+            <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, marginTop: 8 }}>
+              {weightPts[0].y.toFixed(1)}kg → {weightPts[weightPts.length - 1].y.toFixed(1)}kg over {weightPts.length} logged days
+            </Text>
+          </View>
+        )}
 
         {photos.length >= 2 && (
           <>

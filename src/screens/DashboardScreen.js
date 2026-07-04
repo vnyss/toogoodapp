@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, Animated, Dimensions,
+  StyleSheet, ActivityIndicator, Animated, Dimensions, Modal,
 } from 'react-native';
 import Svg, { Path, Circle, Line, Rect, Polyline, Polygon } from 'react-native-svg';
 import { C, F, S } from '../theme';
 import { useTheme } from '../ThemeContext';
-import { getScore, leaderboard, awardXP, aiChat, fetchLogs, syncLogs, getMe } from '../api';
+import { getScore, leaderboard, awardXP, aiChat, fetchLogs, syncLogs, getMe, lookupBarcode } from '../api';
 import { getToken, getUser } from '../auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import BarcodeScanner from '../components/BarcodeScanner';
 
 // ─────────────────────────────────────────────────────────────
 //  HELPERS
@@ -19,6 +20,12 @@ function todayStr() {
   });
 }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
+function hToTimeStr(h) {
+  const hh = Math.floor(h) % 12 || 12;
+  const mm = Math.round((h - Math.floor(h)) * 60);
+  const suf = Math.floor(h) < 12 ? 'am' : 'pm';
+  return mm ? `${hh}:${String(mm).padStart(2, '0')}${suf}` : `${hh}${suf}`;
+}
 
 // ─────────────────────────────────────────────────────────────
 //  EMBEDDED LOG SECTION  (matches index.html Log Today section)
@@ -645,7 +652,7 @@ function WeekCalendar({ navigate, mc, accentColor, fontSize, borderRadius }) {
           <TouchableOpacity style={cal.arrow} onPress={() => setWeekOffset(w => w + 1)}>
             <Text style={cal.arrowTxt}>next →</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={cal.penBtn} onPress={() => navigate && navigate('calendar')}>
+          <TouchableOpacity style={cal.penBtn} onPress={() => navigate && navigate('schedule')}>
             <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={mc.text3} strokeWidth={2} strokeLinecap="round">
               <Path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
               <Path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
@@ -922,7 +929,7 @@ function ProgressGrid({ username, mc, accentColor, fontSize, borderRadius }) {
 // ─────────────────────────────────────────────────────────────
 //  QUICK ACTIONS  (matches .actions-grid in index.html)
 // ─────────────────────────────────────────────────────────────
-function QuickActions({ navigate, mc, accentColor, fontSize, borderRadius }) {
+function QuickActions({ navigate, onScan, mc, accentColor, fontSize, borderRadius }) {
   const actions = [
     {
       name: 'Meal Plan',
@@ -948,7 +955,7 @@ function QuickActions({ navigate, mc, accentColor, fontSize, borderRadius }) {
     {
       name: 'Scan Barcode',
       desc: 'Instantly look up nutrition on any packaged food.',
-      key: 'log',
+      key: 'scan',
       icon: (
         <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth={1.8} strokeLinecap="round">
           <Rect x="1" y="4" width="22" height="16" />
@@ -983,7 +990,7 @@ function QuickActions({ navigate, mc, accentColor, fontSize, borderRadius }) {
   return (
     <View style={qa.grid}>
       {actions.map((a, i) => (
-        <TouchableOpacity key={i} style={qa.card} onPress={() => navigate(a.key)}>
+        <TouchableOpacity key={i} style={qa.card} onPress={() => a.key === 'scan' ? onScan && onScan() : navigate(a.key)}>
           <View style={qa.iconBox}>{a.icon}</View>
           <Text style={qa.name}>{a.name}</Text>
           <Text style={qa.desc}>{a.desc}</Text>
@@ -1171,6 +1178,87 @@ function wxLookup(code, isDay) {
 // ─────────────────────────────────────────────────────────────
 //  MAIN DASHBOARD SCREEN
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+//  SCAN RESULT MODAL  (matches #barcodeModal .scan-result in index.html)
+// ─────────────────────────────────────────────────────────────
+function ScanResultModal({ visible, loading, product, error, added, onAdd, onClose, onRescan, mc, accentColor }) {
+  const sm = StyleSheet.create({
+    overlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center' },
+    box:       { width: 420, maxWidth: '90%', backgroundColor: mc.surface, borderWidth: 1, borderColor: mc.border, padding: 28 },
+    name:      { fontFamily: F.display, fontSize: 18, color: mc.text, letterSpacing: 0.5, marginBottom: 4 },
+    brand:     { fontSize: 12, color: mc.text3, fontFamily: F.mono, letterSpacing: 1, marginBottom: 18 },
+    macroRow:  { flexDirection: 'row', gap: 18, marginBottom: 14 },
+    macroVal:  { fontFamily: F.display, fontSize: 18, color: accentColor },
+    macroLbl:  { fontSize: 9, color: mc.text3, fontFamily: F.mono, letterSpacing: 2, textTransform: 'uppercase', marginTop: 2 },
+    serving:   { fontSize: 11, color: mc.text3, fontFamily: F.mono, letterSpacing: 0.5, marginBottom: 22 },
+    actions:   { flexDirection: 'row', gap: 10 },
+    addBtn:    { flex: 1, paddingVertical: 11, backgroundColor: accentColor, alignItems: 'center' },
+    addBtnTxt: { fontFamily: F.mono, fontSize: 11, color: '#060606', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
+    closeBtn:  { paddingVertical: 11, paddingHorizontal: 18, borderWidth: 1, borderColor: mc.border, alignItems: 'center' },
+    closeBtnTxt:{ fontFamily: F.mono, fontSize: 11, color: mc.text2, letterSpacing: 2, textTransform: 'uppercase' },
+    msg:       { fontSize: 13, color: mc.text2, fontFamily: F.mono, textAlign: 'center', marginVertical: 24, lineHeight: 20 },
+    doneMsg:   { fontSize: 13, color: '#4CAF7C', fontFamily: F.mono, letterSpacing: 0.5 },
+  });
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={sm.overlay}>
+        <View style={sm.box}>
+          {loading && (
+            <>
+              <ActivityIndicator color={accentColor} size="large" />
+              <Text style={sm.msg}>Looking up product…</Text>
+            </>
+          )}
+
+          {!loading && error && (
+            <>
+              <Text style={sm.msg}>{error}</Text>
+              <View style={sm.actions}>
+                <TouchableOpacity style={sm.addBtn} onPress={onRescan}><Text style={sm.addBtnTxt}>Try again</Text></TouchableOpacity>
+                <TouchableOpacity style={sm.closeBtn} onPress={onClose}><Text style={sm.closeBtnTxt}>Close</Text></TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {!loading && !error && product && !added && (
+            <>
+              <Text style={sm.name}>{product.name}</Text>
+              {!!product.brand && <Text style={sm.brand}>{product.brand}</Text>}
+              <View style={sm.macroRow}>
+                <View><Text style={sm.macroVal}>{product.calories}</Text><Text style={sm.macroLbl}>Kcal</Text></View>
+                <View><Text style={sm.macroVal}>{product.protein}g</Text><Text style={sm.macroLbl}>Protein</Text></View>
+                <View><Text style={sm.macroVal}>{product.carbs}g</Text><Text style={sm.macroLbl}>Carbs</Text></View>
+                <View><Text style={sm.macroVal}>{product.fat}g</Text><Text style={sm.macroLbl}>Fat</Text></View>
+              </View>
+              <Text style={sm.serving}>Serving size: {product.serving} — values shown per 100g</Text>
+              <View style={sm.actions}>
+                <TouchableOpacity style={sm.addBtn} onPress={onAdd}><Text style={sm.addBtnTxt}>Add to Today's Log</Text></TouchableOpacity>
+                <TouchableOpacity style={sm.closeBtn} onPress={onClose}><Text style={sm.closeBtnTxt}>Close</Text></TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {!loading && added && (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 24, justifyContent: 'center' }}>
+                <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#4CAF7C" strokeWidth={2.5} strokeLinecap="round">
+                  <Polyline points="20 6 9 17 4 12" />
+                </Svg>
+                <Text style={sm.doneMsg}>Added to today's log</Text>
+              </View>
+              <View style={sm.actions}>
+                <TouchableOpacity style={sm.addBtn} onPress={onRescan}><Text style={sm.addBtnTxt}>Scan another</Text></TouchableOpacity>
+                <TouchableOpacity style={sm.closeBtn} onPress={onClose}><Text style={sm.closeBtnTxt}>Close</Text></TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function DashboardScreen({ navigation }) {
   const { mc, accentColor, fontSize, borderRadius, weatherEffects } = useTheme();
   const [user,     setUser]     = useState('');
@@ -1181,12 +1269,99 @@ export default function DashboardScreen({ navigation }) {
   const [myRank,   setMyRank]   = useState(null);
   const [wx,       setWx]       = useState(null);
   const [loading,  setLoading]  = useState(true);
+  const [todayItems,  setTodayItems]  = useState([]);
+  const [coachItems,  setCoachItems]  = useState([]);
+  const [heroStats,   setHeroStats]   = useState(null); // { kcal, target, protein, steps }
+
+  // Scan Barcode (matches website's openBarcodeScanner — opens right here, no navigation)
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanProduct, setScanProduct] = useState(null);
+  const [scanError,   setScanError]   = useState('');
+  const [scanAdded,   setScanAdded]   = useState(false);
+  const [logRefresh,  setLogRefresh]  = useState(0);
+
+  function openScanner() {
+    setScanProduct(null);
+    setScanError('');
+    setScanAdded(false);
+    setShowScanner(true);
+  }
+
+  async function handleScanned(code) {
+    setShowScanner(false);
+    setScanLoading(true);
+    setScanError('');
+    try {
+      const p = await lookupBarcode(code);
+      setScanProduct(p);
+    } catch {
+      setScanError('Could not find that product. Try another barcode.');
+    } finally {
+      setScanLoading(false);
+    }
+  }
+
+  async function addScannedToLog() {
+    if (!scanProduct || !user) return;
+    const key = `toogood_daily_logs_${user}`;
+    const raw = await AsyncStorage.getItem(key);
+    const logs = raw ? JSON.parse(raw) : [];
+    const idx = logs.findIndex(l => l.date === todayISO());
+    const food = {
+      name:     scanProduct.brand ? `${scanProduct.name} (${scanProduct.brand})` : scanProduct.name,
+      serving:  scanProduct.serving,
+      calories: scanProduct.calories,
+      protein:  scanProduct.protein,
+      carbs:    scanProduct.carbs,
+      fat:      scanProduct.fat,
+      fiber:     scanProduct.fiber,
+      sugar:     scanProduct.sugar,
+      sodium:    scanProduct.sodium,
+      vitA:      scanProduct.vitA,
+      vitC:      scanProduct.vitC,
+      vitD:      scanProduct.vitD,
+      vitB12:    scanProduct.vitB12,
+      iron:      scanProduct.iron,
+      calcium:   scanProduct.calcium,
+      potassium: scanProduct.potassium,
+      magnesium: scanProduct.magnesium,
+      zinc:      scanProduct.zinc,
+    };
+    let entry = idx >= 0 ? logs[idx] : { date: todayISO(), weight: '', steps: '', workout: '', hunger: 5, energy: 5, foods: [], calories: 0, protein: 0, carbs: 0, fat: 0 };
+    entry = { ...entry, foods: [...(entry.foods || []), food] };
+    entry.calories = entry.foods.reduce((s, f) => s + (f.calories || 0), 0);
+    entry.saved = true;
+    if (idx >= 0) logs[idx] = entry; else logs.unshift(entry);
+    await AsyncStorage.setItem(key, JSON.stringify(logs));
+    syncLogs([entry]).catch(() => {});
+    awardXP('food_log').catch(() => {});
+    setScanAdded(true);
+    setLogRefresh(r => r + 1);
+  }
 
   useEffect(() => {
     // Award login XP and fetch score
     awardXP('login').catch(() => {});
 
-    getUser().then(u => { if (u) setUser(u); });
+    getUser().then(async u => {
+      if (!u) return;
+      setUser(u);
+      // Load hero stats: today's kcal + target
+      try {
+        const todayISO = new Date().toISOString().slice(0, 10);
+        const [rawLog, rawTarget] = await Promise.all([
+          AsyncStorage.getItem(`toogood_daily_logs_${u}`),
+          AsyncStorage.getItem(`tg_computed_targets_${u}`),
+        ]);
+        const logs = rawLog ? JSON.parse(rawLog) : [];
+        const todayEntry = logs.find(l => l.date === todayISO);
+        const kcal = (todayEntry?.foods || []).reduce((s, f) => s + (f.calories || 0), 0);
+        const protein = (todayEntry?.foods || []).reduce((s, f) => s + (f.protein || 0), 0);
+        const target = rawTarget ? JSON.parse(rawTarget) : null;
+        setHeroStats({ kcal, protein: Math.round(protein), steps: parseInt(todayEntry?.steps) || 0, target });
+      } catch {}
+    });
     getMe().then(d => { if (d?.ok && d.full_name) setFullName(d.full_name); }).catch(() => {});
 
     getScore().then(d => {
@@ -1213,6 +1388,175 @@ export default function DashboardScreen({ navigation }) {
       fetchWeatherByIP();
     }
   }, []);
+
+  // Today's checklist — pulled from whatever's already configured (fasting window,
+  // enabled reminders, scheduled workout) so it costs no new API calls.
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const items = [];
+      const todayDow = new Date().getDay(); // 0=Sun..6=Sat
+
+      try {
+        const raw = await AsyncStorage.getItem(`tg_fasting_${user}`);
+        if (raw) {
+          const d = JSON.parse(raw);
+          if (d.fastStart && d.protocol) {
+            items.push({
+              key: 'fast',
+              label: `Fasting — ${d.protocol.key || ''}`,
+              sub: `Eating window opens ${new Date(d.fastStart + d.protocol.fast * 3600000).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}`,
+            });
+          }
+        }
+      } catch {}
+
+      try {
+        const raw = await AsyncStorage.getItem(`tg_reminders2_${user}`);
+        if (raw) {
+          const d = JSON.parse(raw);
+          (d.reminders || []).forEach(r => {
+            if (r.enabled && (r.days || []).includes(todayDow)) {
+              const sub = r.type === 'times' ? (r.times || []).join(', ') : `every ${r.interval}m`;
+              items.push({ key: `rem-${r.key}`, label: r.label, sub });
+            }
+          });
+        }
+      } catch {}
+
+      try {
+        const raw = await AsyncStorage.getItem('exercise_schedule_v2');
+        if (raw) {
+          const d = JSON.parse(raw);
+          const DAYS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+          const dayName = DAYS_FULL[(todayDow + 6) % 7];
+          const today = d.schedule?.[dayName];
+          if (today?.active && (today.exercises || []).length) {
+            today.exercises.forEach((ex, i) => {
+              items.push({ key: `wo-${i}`, label: ex.name, sub: `${hToTimeStr(ex.startH)} – ${hToTimeStr(ex.endH)}` });
+            });
+          }
+        }
+      } catch {}
+
+      // Gym program calendar blocks for today
+      try {
+        const todayISO = new Date().toISOString().slice(0, 10);
+        const raw = await AsyncStorage.getItem(`tg_cal_blocks_${user}_${todayISO}`);
+        if (raw) {
+          const blocks = JSON.parse(raw);
+          blocks.forEach(b => {
+            const h = Math.floor(b.startH), m = Math.round((b.startH - h) * 60);
+            const timeStr = `${h}:${m.toString().padStart(2, '0')}`;
+            items.push({ key: `calblock-${b.id}`, label: b.name, sub: `${timeStr} · from your gym program` });
+          });
+        }
+      } catch {}
+
+      setTodayItems(items);
+    })();
+  }, [user]);
+
+  // ── Proactive coach nudges ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const nudges = [];
+      const now = Date.now();
+      const todayDow = (new Date().getDay() + 6) % 7; // Mon=0..Sun=6
+
+      // 1. Workout consistency: flag if mid-week with zero program days done
+      try {
+        const raw = await AsyncStorage.getItem(`tg_programs_${user}`);
+        if (raw) {
+          const { activeIds = [], progress = {} } = JSON.parse(raw);
+          const { PROGRAMS: PROGS } = await import('../data/guidedWorkouts');
+          for (const pid of activeIds) {
+            const prog = PROGS.find(p => p.id === pid);
+            if (!prog) continue;
+            const progState = progress[pid] || { week: 1, completedDays: [] };
+            const weekIdx = Math.min(progState.week - 1, prog.schedule.length - 1);
+            const weekDays = prog.schedule[weekIdx].days.filter(d => !d.rest);
+            const doneThisWeek = progState.completedDays.filter(k => k.startsWith(`${pid}_w${progState.week}_`)).length;
+            if (todayDow >= 2 && doneThisWeek === 0 && weekDays.length > 0) {
+              nudges.push({ key: `wo-${pid}`, label: `${prog.name} — no workouts logged yet this week`, sub: `${weekDays.length} session${weekDays.length > 1 ? 's' : ''} planned · tap Programs to check off today` });
+            }
+          }
+        }
+      } catch {}
+
+      // 2. Fasting pattern: flag repeated early-ended fasts
+      try {
+        const raw = await AsyncStorage.getItem(`tg_fasting_${user}`);
+        if (raw) {
+          const d = JSON.parse(raw);
+          const recentEarly = (d.history || []).filter(h => h.endedEarly && now - h.end < 7 * 86400000).length;
+          if (recentEarly >= 2) {
+            nudges.push({ key: 'fast-pattern', label: `${recentEarly} fasts ended early this week`, sub: 'Consider switching to a shorter window (e.g. 14:10) for better consistency' });
+          }
+        }
+      } catch {}
+
+      // 3. Cycle phase awareness
+      try {
+        const raw = await AsyncStorage.getItem(`tg_period_${user}`);
+        if (raw) {
+          const pd = JSON.parse(raw);
+          if (pd.lastPeriod) {
+            const { getCyclePhase } = await import('../lib/cyclePhase');
+            const phase = getCyclePhase(pd);
+            if (phase === 'luteal') {
+              nudges.push({ key: 'cycle-luteal', label: 'Luteal phase — calorie targets adjusted +125 kcal', sub: 'Prioritise recovery workouts & stress relief · SmartTargets updated' });
+            } else if (phase === 'menstruation') {
+              nudges.push({ key: 'cycle-mens', label: 'Menstrual phase — rest & recovery recommended', sub: 'Iron-rich foods & gentle movement · targets unchanged' });
+            } else if (phase === 'ovulation') {
+              nudges.push({ key: 'cycle-ovul', label: 'Ovulation phase — peak performance window', sub: 'Great time to push intensity in your workouts' });
+            }
+          }
+        }
+      } catch {}
+
+      // 4. Calorie progress vs SmartTargets goal (evening check)
+      try {
+        const hour = new Date().getHours();
+        if (hour >= 17) {
+          const tRaw = await AsyncStorage.getItem(`tg_computed_targets_${user}`);
+          if (tRaw) {
+            const t = JSON.parse(tRaw);
+            const todayISO = new Date().toISOString().slice(0, 10);
+            const lRaw = await AsyncStorage.getItem(`toogood_daily_logs_${user}`);
+            const logs = lRaw ? JSON.parse(lRaw) : [];
+            const todayLog = logs.find(l => l.date === todayISO);
+            const logged = (todayLog?.foods || []).reduce((s, f) => s + (f.calories || 0), 0);
+            const pct = t.calories > 0 ? (logged / t.calories) * 100 : 0;
+            if (pct < 50) {
+              nudges.push({ key: 'cal-under', label: `Only ${Math.round(pct)}% of your calorie goal logged today`, sub: `${logged} / ${t.calories} kcal — log your meals to stay on track` });
+            } else if (pct > 115) {
+              nudges.push({ key: 'cal-over', label: `${Math.round(pct - 100)}% over your calorie goal today`, sub: `${logged} / ${t.calories} kcal — consider a lighter dinner` });
+            }
+          }
+        }
+      } catch {}
+
+      // 5. Workout completion vs today's calendar blocks
+      try {
+        const todayISO = new Date().toISOString().slice(0, 10);
+        const bRaw = await AsyncStorage.getItem(`tg_cal_blocks_${user}_${todayISO}`);
+        const pRaw = await AsyncStorage.getItem(`tg_programs_${user}`);
+        if (bRaw && pRaw) {
+          const blocks = JSON.parse(bRaw);
+          const { activeIds = [], progress = {} } = JSON.parse(pRaw);
+          const doneKeys = Object.values(progress).flatMap(p => p.completedDays || []);
+          const unfinished = blocks.filter(b => b.programId && !doneKeys.some(k => k.includes(b.programId)));
+          if (unfinished.length > 0 && new Date().getHours() >= 18) {
+            nudges.push({ key: 'cal-undone', label: `${unfinished.length} scheduled workout${unfinished.length > 1 ? 's' : ''} not marked done today`, sub: `${unfinished.map(b => b.name).join(', ')} — tap Gym Programs to check off` });
+          }
+        }
+      } catch {}
+
+      setCoachItems(nudges);
+    })();
+  }, [user]);
 
   function fetchWeather(lat, lon) {
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&temperature_unit=celsius`)
@@ -1247,7 +1591,7 @@ export default function DashboardScreen({ navigation }) {
     screen: { flex: 1, backgroundColor: mc.bg },
 
     // ── .hero ──
-    hero:            { minHeight: 600, paddingHorizontal: 72, paddingTop: 64, paddingBottom: 56, borderBottomWidth: 1, borderBottomColor: mc.border, justifyContent: 'center', position: 'relative' },
+    hero:            { minHeight: 460, paddingHorizontal: 56, paddingTop: 48, paddingBottom: 40, borderBottomWidth: 1, borderBottomColor: mc.border, justifyContent: 'center', position: 'relative' },
     heroTop:         { position: 'absolute', top: 24, right: 28, flexDirection: 'row', alignItems: 'center', gap: 10 },
     scanBtn:         { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 7, paddingHorizontal: 14, borderWidth: 1, borderColor: mc.border },
     scanBtnTxt:      { fontFamily: F.mono, fontSize: Math.max(10, fontSize - 2), color: mc.text2, letterSpacing: 2 },
@@ -1260,7 +1604,8 @@ export default function DashboardScreen({ navigation }) {
     eyebrow:         { fontSize: 10, color: mc.text3, letterSpacing: 7, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 20 },
 
     // .hero-greeting
-    greeting:        { fontFamily: F.display, fontSize: 72, color: mc.text, letterSpacing: 1, lineHeight: 80, marginBottom: 28 },
+    greeting:        { fontFamily: F.display, fontWeight: '700', fontSize: 56, color: mc.text, letterSpacing: -0.5, lineHeight: 62, marginBottom: 24 },
+    greetingName:    { fontFamily: "'Jim Nightshade', cursive", fontWeight: '400', color: accentColor },
 
     // Level badge — wide horizontal strip
     levelBadge:      { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', marginBottom: 28, paddingVertical: 16, paddingHorizontal: 24, borderWidth: 1, borderColor: mc.border, backgroundColor: mc.goldDim, gap: 24 },
@@ -1290,15 +1635,23 @@ export default function DashboardScreen({ navigation }) {
     heroBtnTxt:      { fontFamily: F.mono, fontSize: fontSize, letterSpacing: 2.5, color: mc.text2 },
 
     // .content
-    content:       { paddingHorizontal: 72, paddingBottom: 80 },
-    section:       { marginTop: 64 },
-    sectionHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 24, gap: 16 },
-    sectionTitle:  { fontFamily: F.display, fontSize: 20, color: mc.text, letterSpacing: 1 },
+    content:       { paddingHorizontal: 56, paddingBottom: 80 },
+    section:       { marginTop: 40 },
+    sectionHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 20, gap: 16 },
+    sectionTitle:  { fontFamily: F.display, fontWeight: '700', fontSize: 18, color: mc.text, letterSpacing: 0.2 },
     sectionSub:    { fontSize: fontSize, color: mc.text2, fontStyle: 'italic', letterSpacing: 0.5, marginTop: 2, fontFamily: F.mono },
     sectionAction: { fontSize: Math.max(10, fontSize - 2), color: mc.text2, letterSpacing: 2, fontFamily: F.mono },
+
+    // .today-checklist
+    todayRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: mc.border },
+    todayDot:    { width: 6, height: 6, borderRadius: 3, backgroundColor: accentColor, flexShrink: 0 },
+    todayLabel:  { fontFamily: F.mono, fontSize: fontSize, color: mc.text, letterSpacing: 0.3 },
+    todaySub:    { fontFamily: F.mono, fontSize: Math.max(10, fontSize - 2), color: mc.text3, marginTop: 2, letterSpacing: 0.5 },
+    todayEmpty:  { fontFamily: F.mono, fontSize: Math.max(10, fontSize - 2), color: mc.text3, fontStyle: 'italic', paddingVertical: 8 },
   });
 
   return (
+    <>
     <ScrollView style={st.screen} contentContainerStyle={{ paddingBottom: 80 }}>
 
       {/* ══ HERO — matches .hero (min-height:100vh) ══ */}
@@ -1309,7 +1662,7 @@ export default function DashboardScreen({ navigation }) {
 
         {/* Scan Barcode button — .hero-top / .hero-scan-btn */}
         <View style={st.heroTop}>
-          <TouchableOpacity style={st.scanBtn} onPress={() => nav('log')}>
+          <TouchableOpacity style={st.scanBtn} onPress={openScanner}>
             <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={mc.text2} strokeWidth={1.8} strokeLinecap="round">
               <Rect x="1" y="4" width="22" height="16" />
               <Line x1="1" y1="10" x2="23" y2="10" />
@@ -1333,9 +1686,19 @@ export default function DashboardScreen({ navigation }) {
         <Text style={st.eyebrow}>{todayStr().toUpperCase()}</Text>
 
         {/* .hero-greeting */}
-        <Text style={st.greeting}>
-          {greeting},{'\n'}<Text style={{ color: accentColor }}>{name}.</Text>
-        </Text>
+        <View style={{ marginBottom: 24 }}>
+          <Text style={[st.greeting, { marginBottom: 0 }]}>{greeting},</Text>
+          {React.createElement('div', {
+            style: {
+              fontFamily: "'Jim Nightshade', cursive",
+              fontSize: 56,
+              color: accentColor,
+              fontWeight: '400',
+              letterSpacing: '-0.5px',
+              lineHeight: '62px',
+            }
+          }, name + '.')}
+        </View>
 
         {/* Level badge — wide horizontal strip */}
         {level !== null && (
@@ -1383,15 +1746,37 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
+        {/* Today's quick-stats strip */}
+        {heroStats !== null && (
+          <View style={{ flexDirection: 'row', gap: 1, marginBottom: 28, overflow: 'hidden' }}>
+            {[
+              { label: 'KCAL', value: heroStats.kcal > 0 ? heroStats.kcal.toLocaleString() : '—', sub: heroStats.target ? `/ ${heroStats.target.calories.toLocaleString()} goal` : 'eaten today', accent: heroStats.target && heroStats.kcal > heroStats.target.calories },
+              { label: 'PROTEIN', value: heroStats.protein > 0 ? `${heroStats.protein}g` : '—', sub: heroStats.target ? `/ ${heroStats.target.protein}g target` : 'today' },
+              { label: 'STEPS', value: heroStats.steps > 0 ? heroStats.steps.toLocaleString() : '—', sub: 'logged today' },
+            ].map(s => (
+              <View key={s.label} style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: s.accent ? '#E57373' + '60' : mc.border, backgroundColor: s.accent ? '#E5737308' : 'transparent' }}>
+                <Text style={{ fontFamily: F.mono, fontSize: 9, color: s.accent ? '#E57373' : mc.text3, letterSpacing: 3, marginBottom: 4 }}>{s.label}</Text>
+                <Text style={{ fontFamily: F.display, fontSize: 22, color: s.accent ? '#E57373' : accentColor, letterSpacing: -0.5 }}>{s.value}</Text>
+                <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, marginTop: 2 }}>{s.sub}</Text>
+              </View>
+            ))}
+            {heroStats.target && heroStats.kcal > 0 && (
+              <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: mc.border }}>
+                <View style={{ height: 2, width: `${Math.min(100, (heroStats.kcal / heroStats.target.calories) * 100).toFixed(1)}%`, backgroundColor: heroStats.kcal > heroStats.target.calories ? '#E57373' : accentColor }} />
+              </View>
+            )}
+          </View>
+        )}
+
         {/* .hero-actions */}
         <View style={st.heroActions}>
           <TouchableOpacity style={[st.heroBtn, st.heroBtnPrimary]} onPress={() => nav('ai')}>
             <Text style={[st.heroBtnTxt, { color: '#060606' }]}>Ask the AI</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[st.heroBtn, st.heroBtnSecondary]} onPress={() => {}}>
+          <TouchableOpacity style={[st.heroBtn, st.heroBtnSecondary]} onPress={() => nav('log')}>
             <Text style={st.heroBtnTxt}>Log Today</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[st.heroBtn, st.heroBtnSecondary]} onPress={() => {}}>
+          <TouchableOpacity style={[st.heroBtn, st.heroBtnSecondary]} onPress={() => nav('adapt')}>
             <Text style={st.heroBtnTxt}>My Adaptation</Text>
           </TouchableOpacity>
         </View>
@@ -1400,45 +1785,92 @@ export default function DashboardScreen({ navigation }) {
       {/* ══ CONTENT ══ */}
       <View style={st.content}>
 
-        {/* Log Today */}
-        <View style={st.section} id="log">
+        {/* What's on today */}
+        <View style={[st.section, { marginTop: 0 }]} id="today">
           <View style={st.sectionHeader}>
             <View style={{ flex: 1 }}>
-              <Text style={st.sectionTitle}>Log Today</Text>
-              <Text style={st.sectionSub}>Track your intake, activity and how you feel.</Text>
+              <Text style={st.sectionTitle}>Today</Text>
+              <Text style={st.sectionSub}>What's on your plate today, from your reminders, fasting window and workout schedule.</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-              <TouchableOpacity onPress={() => nav('log')}>
-                <Text style={st.sectionAction}>Full view →</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          <EmbeddedLog username={user} mc={mc} accentColor={accentColor} fontSize={fontSize} borderRadius={borderRadius} />
-        </View>
-
-        {/* Assistant */}
-        <View style={st.section} id="assistant">
-          <View style={st.sectionHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={st.sectionTitle}>Assistant</Text>
-              <Text style={st.sectionSub}>Tell me what you ate, your weight, steps, or how your workout went — I'll log it.</Text>
-            </View>
-          </View>
-          <EmbeddedAssistant mc={mc} accentColor={accentColor} fontSize={fontSize} borderRadius={borderRadius} />
-        </View>
-
-        {/* TG·Adapt */}
-        <View style={st.section} id="adapt">
-          <View style={st.sectionHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={st.sectionTitle}>TG·Adapt</Text>
-              <Text style={st.sectionSub}>Your plan adjusts week to week based on your real results.</Text>
-            </View>
-            <TouchableOpacity onPress={() => nav('adapt')}>
-              <Text style={st.sectionAction}>Full view →</Text>
+            <TouchableOpacity onPress={() => nav('reminders')}>
+              <Text style={st.sectionAction}>Manage →</Text>
             </TouchableOpacity>
           </View>
-          <EmbeddedAdapt username={user} mc={mc} accentColor={accentColor} fontSize={fontSize} borderRadius={borderRadius} />
+          {todayItems.length === 0 ? (
+            <View style={{ flexDirection: 'row', gap: 16, flexWrap: 'wrap', paddingVertical: 4 }}>
+              <TouchableOpacity onPress={() => nav('programs')} style={{ paddingVertical: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: mc.border }}>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text2 }}>+ Start a gym program</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => nav('schedule')} style={{ paddingVertical: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: mc.border }}>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text2 }}>+ Set exercise schedule</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => nav('fasting')} style={{ paddingVertical: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: mc.border }}>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text2 }}>+ Start fasting timer</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            todayItems.map(it => (
+              <View key={it.key} style={st.todayRow}>
+                <View style={st.todayDot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={st.todayLabel}>{it.label}</Text>
+                  <Text style={st.todaySub}>{it.sub}</Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* Coach Insights */}
+        <View style={st.section} id="coach">
+          <View style={st.sectionHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={st.sectionTitle}>Coach Insights</Text>
+              <Text style={st.sectionSub}>Pattern-based nudges from your fasting, workouts and cycle data.</Text>
+            </View>
+          </View>
+          {coachItems.length === 0 ? (
+            <View style={[st.todayRow, { borderLeftWidth: 2, borderLeftColor: '#4CAF7C66', paddingLeft: 10 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[st.todayLabel, { color: '#4CAF7C' }]}>All looks good today</Text>
+                <Text style={st.todaySub}>No patterns flagged — keep logging consistently for personalised nudges</Text>
+              </View>
+            </View>
+          ) : (
+            coachItems.map(it => (
+              <View key={it.key} style={[st.todayRow, { borderLeftWidth: 2, borderLeftColor: accentColor + '66', paddingLeft: 10 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={st.todayLabel}>{it.label}</Text>
+                  <Text style={st.todaySub}>{it.sub}</Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* Jump In — shortcut cards replacing embedded duplicates */}
+        <View style={st.section} id="jumpin">
+          <View style={st.sectionHeader}>
+            <Text style={st.sectionTitle}>Jump In</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+            {[
+              { key: 'log',   label: 'Log Food',    sub: 'Track today\'s meals & calories',   arrow: '→' },
+              { key: 'ai',    label: 'AI Assistant', sub: 'Ask anything, get a diet plan',     arrow: '→' },
+              { key: 'adapt', label: 'My Plan',      sub: 'Your personalised weekly plan',     arrow: '→' },
+              { key: 'diary', label: 'Workout Log',  sub: 'Record and review your sessions',   arrow: '→' },
+            ].map(card => (
+              <TouchableOpacity
+                key={card.key}
+                onPress={() => nav(card.key)}
+                style={{ flex: 1, minWidth: 160, borderWidth: 1, borderColor: mc.border, padding: 16, borderRadius }}
+              >
+                <Text style={{ fontFamily: F.display, fontWeight: '600', fontSize: 14, color: mc.text, marginBottom: 4 }}>{card.label}</Text>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, lineHeight: 16 }}>{card.sub}</Text>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: accentColor, marginTop: 14 }}>Open →</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Exercise Calendar */}
@@ -1479,30 +1911,25 @@ export default function DashboardScreen({ navigation }) {
           <ProgressGrid username={user} mc={mc} accentColor={accentColor} fontSize={fontSize} borderRadius={borderRadius} />
         </View>
 
-        {/* Quick Actions */}
-        <View style={st.section} id="actions">
-          <View style={st.sectionHeader}>
-            <Text style={st.sectionTitle}>Quick Actions</Text>
-          </View>
-          <QuickActions navigate={nav} mc={mc} accentColor={accentColor} fontSize={fontSize} borderRadius={borderRadius} />
-        </View>
-
-        {/* Recent Conversations */}
-        <View style={[st.section, { marginBottom: 0 }]}>
-          <View style={st.sectionHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={st.sectionTitle}>Recent Conversations</Text>
-              <Text style={st.sectionSub}>Your AI sessions from this device.</Text>
-            </View>
-            <TouchableOpacity onPress={() => nav('ai')}>
-              <Text style={st.sectionAction}>Open AI</Text>
-            </TouchableOpacity>
-          </View>
-          <RecentChats navigate={nav} mc={mc} accentColor={accentColor} fontSize={fontSize} borderRadius={borderRadius} />
-        </View>
 
       </View>
     </ScrollView>
+
+    <BarcodeScanner visible={showScanner} onScanned={handleScanned} onClose={() => setShowScanner(false)} />
+
+    <ScanResultModal
+      visible={scanLoading || !!scanProduct || !!scanError}
+      loading={scanLoading}
+      product={scanProduct}
+      error={scanError}
+      added={scanAdded}
+      onAdd={addScannedToLog}
+      onClose={() => { setScanProduct(null); setScanError(''); setScanAdded(false); }}
+      onRescan={() => { setScanProduct(null); setScanError(''); setScanAdded(false); setShowScanner(true); }}
+      mc={mc}
+      accentColor={accentColor}
+    />
+    </>
   );
 }
 

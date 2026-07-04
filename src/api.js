@@ -67,6 +67,9 @@ export const saveSessions = (sessions) => post('/api/v1/sessions', { sessions })
 // Blood Monitor
 export const monitorAnalyze = (d)    => post('/perfect/api/monitor', d);                    // {gender, age, values}
 export const monitorExtract = (d)    => post('/perfect/api/monitor/extract', d);             // {image_b64, image_mime}
+
+// Photo-based food recognition
+export const foodPhotoExtract = (d)  => post('/perfect/api/food/photo-extract', d);          // {image_b64, image_mime}
 export const monitorSave    = (data) => post('/perfect/api/monitor/save', data);             // {report: {...}, label?}
 export const monitorHistory = ()     => get('/perfect/api/monitor/history');
 
@@ -86,8 +89,30 @@ export const fetchLogs = ()      => get('/perfect/api/daily-logs');
 export const syncLogs  = (logs)  => post('/perfect/api/daily-logs', { logs });
 
 // Email / reminders
-export const forgotPassword  = (email)         => post('/api/v1/forgot-password', { email });
-export const calendarRemind  = (date, blocks)  => post('/perfect/api/calendar/remind', { date, blocks });
+export const forgotPassword  = (email)                       => post('/api/v1/forgot-password', { email });
+export const sendResetCode   = (email)                       => post('/api/v1/password-reset/send', { email });
+export const verifyResetCode = (email, code, new_password)   => post('/api/v1/password-reset/verify', { email, code, new_password });
+export const calendarRemind  = (date, blocks)                => post('/perfect/api/calendar/remind', { date, blocks });
+
+// Open Food Facts reports minerals in g/100g (sodium, calcium, iron, potassium,
+// magnesium, zinc) but our RDI table tracks them in mg — convert on the way in.
+// Vitamins A/D/B12 are already µg and vitamin C is already mg in OFF's schema.
+function microsFromNutriments(n) {
+  return {
+    fiber:     Math.round((n.fiber_100g || 0) * 10) / 10,
+    sugar:     Math.round((n.sugars_100g || 0) * 10) / 10,
+    sodium:    Math.round((n.sodium_100g || 0) * 1000),
+    vitA:      Math.round(n['vitamin-a_100g'] || 0),
+    vitC:      Math.round((n['vitamin-c_100g'] || 0) * 10) / 10,
+    vitD:      Math.round((n['vitamin-d_100g'] || 0) * 10) / 10,
+    vitB12:    Math.round((n['vitamin-b12_100g'] || 0) * 10) / 10,
+    iron:      Math.round((n.iron_100g || 0) * 1000 * 10) / 10,
+    calcium:   Math.round((n.calcium_100g || 0) * 1000),
+    potassium: Math.round((n.potassium_100g || 0) * 1000),
+    magnesium: Math.round((n.magnesium_100g || 0) * 1000),
+    zinc:      Math.round((n.zinc_100g || 0) * 1000 * 10) / 10,
+  };
+}
 
 // Food search via Open Food Facts (no API key needed)
 export async function searchFood(query) {
@@ -107,9 +132,18 @@ export async function searchFood(query) {
         protein:  Math.round(n.proteins_100g  || 0),
         carbs:    Math.round(n.carbohydrates_100g || 0),
         fat:      Math.round(n.fat_100g || 0),
+        ...microsFromNutriments(n),
       };
     });
 }
+
+// ── Watch / Wearable Integrations ─────────────────────────────────────────────
+export const watchStatus              = ()           => get('/api/v1/integrations/status');
+export const watchSyncGoogleFit       = (days = 7)  => post('/api/v1/integrations/google-fit/sync', { days });
+export const watchSyncGarmin          = (days = 7)  => post('/api/v1/integrations/garmin/sync', { days });
+export const watchDisconnectGoogleFit = ()           => req('/api/v1/integrations/google-fit/disconnect', { method: 'DELETE' });
+export const watchDisconnectGarmin    = ()           => req('/api/v1/integrations/garmin/disconnect',     { method: 'DELETE' });
+export const watchData                = (start, end) => get(`/api/v1/integrations/data?start=${start}&end=${end}`);
 
 // Barcode lookup via Open Food Facts (no API key needed)
 export async function lookupBarcode(code) {
@@ -127,5 +161,6 @@ export async function lookupBarcode(code) {
     protein:  Math.round(n.proteins_100g  || 0),
     carbs:    Math.round(n.carbohydrates_100g || 0),
     fat:      Math.round(n.fat_100g || 0),
+    ...microsFromNutriments(n),
   };
 }

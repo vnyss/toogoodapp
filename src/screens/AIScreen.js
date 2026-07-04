@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, Platform,
+  StyleSheet, ActivityIndicator, Platform, useWindowDimensions,
 } from 'react-native';
 import Svg, { Path, Line, Rect, Circle, Polyline, Polygon } from 'react-native-svg';
 import { C, F, S } from '../theme';
 import { useTheme } from '../ThemeContext';
-import { generalAiChat, getSessions, saveSessions, banComment, lookupBarcode } from '../api';
+import { generalAiChat, getSessions, saveSessions, banComment, lookupBarcode, getMe } from '../api';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { getToken, getUser } from '../auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -271,27 +271,62 @@ function parseLine(line) {
   return out;
 }
 
+function isTableLine(line) { return /^\s*\|/.test(line); }
+function isSepLine(line) { return /^\s*\|[\s\-:|]+\|/.test(line); }
+
+function MsgTable({ rows, mc, accentColor }) {
+  if (rows.length < 2) return null;
+  const header = rows[0].split('|').map(c => c.trim()).filter(Boolean);
+  const body = rows.slice(2).map(r => r.split('|').map(c => c.trim()).filter(Boolean));
+  const cellBase = { fontFamily: F.mono, fontSize: 12, color: mc.text, paddingVertical: 5, paddingHorizontal: 8 };
+  return (
+    <View style={{ borderWidth: 1, borderColor: mc.border, marginVertical: 8, overflow: 'hidden' }}>
+      <View style={{ flexDirection: 'row', backgroundColor: accentColor + '18', borderBottomWidth: 1, borderBottomColor: mc.border }}>
+        {header.map((h, i) => (
+          <Text key={i} style={[cellBase, { fontWeight: '700', color: accentColor, flex: i === 0 ? 2 : 1 }]}>{h}</Text>
+        ))}
+      </View>
+      {body.map((row, ri) => (
+        <View key={ri} style={{ flexDirection: 'row', borderBottomWidth: ri < body.length - 1 ? 1 : 0, borderBottomColor: mc.border, backgroundColor: ri % 2 === 0 ? 'transparent' : mc.bg + '60' }}>
+          {header.map((_, ci) => (
+            <Text key={ci} style={[cellBase, { flex: ci === 0 ? 2 : 1, color: ci === 0 ? mc.text2 : mc.text }]}>{row[ci] || ''}</Text>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function MsgText({ text, mc, accentColor }) {
   const msgTxt = { fontFamily: F.mono, fontSize: 15, color: mc.text, lineHeight: 28, letterSpacing: 0.3 };
   const lines = (text || '').split('\n');
-  return (
-    <View>
-      {lines.map((line, li) => {
-        const isBullet = /^[\-\*•]\s/.test(line);
-        const isHeader = /^#{1,3}\s/.test(line);
-        const content = isBullet
-          ? line.replace(/^[\-\*•]\s/, '')
-          : isHeader
-          ? line.replace(/^#+\s/, '')
-          : line;
-        const parts = parseLine(content);
+  const elements = [];
+  let tableRows = [];
+  let li = 0;
 
-        if (!content.trim() && !isBullet) {
-          return <View key={li} style={{ height: 6 }} />;
-        }
+  function flushTable() {
+    if (tableRows.length >= 2) {
+      elements.push(<MsgTable key={`tbl_${li}`} rows={tableRows} mc={mc} accentColor={accentColor} />);
+    }
+    tableRows = [];
+  }
 
-        return (
-          <Text key={li} style={[
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (isTableLine(line)) {
+      tableRows.push(line);
+      li = i;
+    } else {
+      if (tableRows.length) flushTable();
+      const isBullet = /^[\-\*•]\s/.test(line);
+      const isHeader = /^#{1,3}\s/.test(line);
+      const content = isBullet ? line.replace(/^[\-\*•]\s/, '') : isHeader ? line.replace(/^#+\s/, '') : line;
+      const parts = parseLine(content);
+      if (!content.trim() && !isBullet) {
+        elements.push(<View key={i} style={{ height: 6 }} />);
+      } else {
+        elements.push(
+          <Text key={i} style={[
             msgTxt,
             isBullet && { marginLeft: 12 },
             isHeader && { fontFamily: F.display, fontSize: 16, color: mc.text, marginBottom: 4, marginTop: 8 },
@@ -306,9 +341,11 @@ function MsgText({ text, mc, accentColor }) {
             )}
           </Text>
         );
-      })}
-    </View>
-  );
+      }
+    }
+  }
+  if (tableRows.length) flushTable();
+  return <View>{elements}</View>;
 }
 
 // ─── Session row component ────────────────────────────────────────────────────
@@ -344,6 +381,249 @@ function MessageRow({ msg, initials, onCopy, mc, accentColor, st }) {
     }
   }
 
+  function handleDownloadDiet() {
+    if (Platform.OS !== 'web') return;
+    const now  = new Date();
+    const date = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const yr   = now.getFullYear();
+    const ac   = accentColor || '#4CAF7C';
+    const acL  = ac + '15';
+    const acM  = ac + '33';
+    const acD  = ac + '55';
+
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function inline(s) {
+      return esc(s)
+        .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g,'<em>$1</em>');
+    }
+
+    function mdToHtml(md) {
+      const lines = md.split('\n');
+      let out = '', inTable = false, tHeadDone = false, inList = false, inNotes = false;
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i], line = raw.trim();
+        if (line.startsWith('|')) {
+          if (!inTable) { out += '<div class="tbl-wrap"><table>'; inTable = true; tHeadDone = false; }
+          if (/^\|[\s\-|:]+\|$/.test(line)) { if(!tHeadDone){ out+='<tbody>'; tHeadDone=true; } continue; }
+          const cells = line.split('|').slice(1,-1).map(c=>c.trim());
+          const isNum = (v) => /^[\d,.\-–—\s]+$/.test(v);
+          if (!tHeadDone) {
+            out += '<thead><tr>' + cells.map(c=>`<th>${esc(c)}</th>`).join('') + '</tr></thead>';
+          } else {
+            const isTotal = /total|summary/i.test(cells[0]);
+            out += `<tr${isTotal?' class="total-row"':''}>` + cells.map((c,ci)=>`<td${ci>0&&isNum(c)?' class="num"':''}>${esc(c)}</td>`).join('') + '</tr>';
+          }
+          continue;
+        }
+        if (inTable) { out += tHeadDone?'</tbody></table></div>':'</table></div>'; inTable=false; tHeadDone=false; }
+
+        if (line.startsWith('### ')){ if(inList){out+='</ul>';inList=false;} out+=`<h3>${inline(line.slice(4))}</h3>`; continue; }
+        if (line.startsWith('## ')) { if(inList){out+='</ul>';inList=false;} out+=`<h2>${inline(line.slice(3))}</h2>`; continue; }
+        if (line.startsWith('# '))  { if(inList){out+='</ul>';inList=false;} out+=`<h2>${inline(line.slice(2))}</h2>`; continue; }
+
+        if (/coach\s*notes/i.test(line)) {
+          if(inList){out+='</ul>';inList=false;}
+          out+=`<div class="notes-box"><div class="notes-header"><span class="notes-icon">✦</span>Coach Notes</div><div class="notes-body">`;
+          inNotes=true; continue;
+        }
+        if (/^[-•*]\s/.test(raw)) {
+          if(!inList){ out+='<ul>'; inList=true; }
+          out+=`<li>${inline(raw.replace(/^[-•*]\s/,''))}</li>`; continue;
+        }
+        if (/^\d+\.\s/.test(raw)) {
+          if(!inList){ out+='<ol>'; inList=true; }
+          out+=`<li>${inline(raw.replace(/^\d+\.\s/,''))}</li>`; continue;
+        }
+        if (inList) { out+='</ul>'; inList=false; if(inNotes){out+='</div></div>';inNotes=false;} }
+        if (line==='') continue;
+        out+=`<p>${inline(raw)}</p>`;
+      }
+      if (inTable) out += tHeadDone?'</tbody></table></div>':'</table></div>';
+      if (inList)  out += '</ul>';
+      if (inNotes) out += '</div></div>';
+      return out;
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Personalised Diet Plan — Too Good</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Inter',sans-serif;color:#1c1208;background:#ffffff;font-size:12.5px;line-height:1.7;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+/* ═══════════════════════════════════════════════════════
+   COVER PAGE
+═══════════════════════════════════════════════════════ */
+.cover{
+  min-height:100vh;background:linear-gradient(160deg,#080604 0%,#161009 55%,#0c0a07 100%);
+  color:#fff;display:flex;flex-direction:column;padding:0;position:relative;overflow:hidden;
+  page-break-after:always;
+}
+.cover-deco{position:absolute;inset:0;pointer-events:none}
+.cover-inner{flex:1;display:flex;flex-direction:column;padding:72px 80px}
+.cover-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:auto}
+.cover-brand{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;letter-spacing:6px;text-transform:uppercase;color:${ac}}
+.cover-ref{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,0.22);text-transform:uppercase}
+.cover-mid{margin:auto 0;padding:60px 0 48px}
+.cover-eyebrow{font-family:'Inter',sans-serif;font-size:10px;font-weight:500;letter-spacing:6px;text-transform:uppercase;color:${ac};margin-bottom:28px;display:flex;align-items:center;gap:14px}
+.cover-eyebrow::before{content:'';display:block;width:32px;height:1px;background:${ac}}
+.cover-h1{font-family:'Cormorant Garamond',serif;font-size:88px;font-weight:300;line-height:0.92;letter-spacing:-3px;color:#ffffff;margin-bottom:6px}
+.cover-h1 em{color:${ac};font-style:italic}
+.cover-rule{width:64px;height:1px;background:linear-gradient(to right,${ac},transparent);margin:32px 0}
+.cover-tagline{font-family:'Inter',sans-serif;font-size:13px;font-weight:300;color:rgba(255,255,255,0.38);letter-spacing:1.5px;max-width:400px;line-height:1.8}
+.cover-bottom{border-top:1px solid rgba(255,255,255,0.08);padding-top:28px;display:flex;justify-content:space-between;align-items:flex-end}
+.cover-meta{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,0.25);line-height:1.9}
+.cover-seal{border:1px solid ${acD};padding:8px 18px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:${ac}}
+
+/* ═══════════════════════════════════════════════════════
+   CONTENT PAGES
+═══════════════════════════════════════════════════════ */
+.page-header{display:flex;justify-content:space-between;align-items:center;padding:20px 72px 16px;border-bottom:1px solid #ece6dc}
+.page-header-brand{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:${ac}}
+.page-header-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#c0b4a0}
+.page-header-date{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:2px;color:#c0b4a0}
+
+.content{padding:44px 72px 120px;max-width:100%}
+
+/* ── Headings ── */
+h2{
+  font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:400;font-style:italic;
+  color:#1c1208;margin:48px 0 18px;letter-spacing:-0.3px;line-height:1.2;
+  border-bottom:1px solid #e4ddd3;padding-bottom:10px;
+  display:flex;align-items:center;gap:12px
+}
+h2::before{content:'';display:inline-block;width:3px;height:26px;background:${ac};flex-shrink:0;border-radius:2px}
+h3{
+  font-family:'Inter',sans-serif;font-size:9px;font-weight:700;letter-spacing:5px;
+  text-transform:uppercase;color:${ac};margin:28px 0 10px
+}
+p{margin-bottom:12px;line-height:1.8;color:#3a2e20;font-size:13px}
+
+/* ── Table ── */
+.tbl-wrap{margin:22px 0 32px;border-radius:2px;overflow:hidden;border:1px solid #e4ddd3;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+thead tr{background:#1c1208}
+thead th{
+  padding:11px 14px;text-align:left;font-family:'Inter',sans-serif;
+  font-weight:600;letter-spacing:1px;font-size:9.5px;text-transform:uppercase;color:#f0e8d8
+}
+thead th:first-child{padding-left:18px}
+tbody tr{border-bottom:1px solid #ece6dc;transition:background 0.1s}
+tbody tr:nth-child(even){background:#faf7f3}
+tbody td{padding:10px 14px;vertical-align:top;color:#2a1e10;font-size:12px;line-height:1.55}
+tbody td:first-child{padding-left:18px;font-weight:500}
+td.num{text-align:right;font-family:'JetBrains Mono',monospace;font-size:11px;color:#4a3a28}
+.total-row{background:${acL} !important;border-top:1.5px solid ${acD} !important;border-bottom:1.5px solid ${acD} !important}
+.total-row td{font-weight:700;color:#1c1208;font-family:'Inter',sans-serif}
+.total-row td.num{font-family:'JetBrains Mono',monospace;font-weight:700}
+
+/* ── Coach notes ── */
+.notes-box{margin:36px 0;background:#faf7f2;border:1px solid ${acM};border-radius:2px;overflow:hidden}
+.notes-header{
+  background:${acL};padding:12px 20px;font-family:'Inter',sans-serif;
+  font-size:9.5px;font-weight:700;letter-spacing:4px;text-transform:uppercase;
+  color:${ac};display:flex;align-items:center;gap:10px;border-bottom:1px solid ${acM}
+}
+.notes-icon{font-size:12px}
+.notes-body{padding:18px 22px}
+.notes-body ul{padding-left:0;list-style:none;margin:0}
+.notes-body li{
+  padding:8px 0 8px 22px;border-bottom:1px solid ${acL};position:relative;
+  font-size:12.5px;line-height:1.75;color:#3a2e20
+}
+.notes-body li:last-child{border-bottom:none}
+.notes-body li::before{content:'→';position:absolute;left:0;color:${ac};font-weight:700}
+ul,ol{padding-left:22px;margin:10px 0 18px}
+li{margin-bottom:6px;line-height:1.8;font-size:12.5px;color:#3a2e20}
+
+/* ── Footer ── */
+.doc-footer{
+  position:fixed;bottom:0;left:0;right:0;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:11px 72px;background:#fff;border-top:1px solid #ece6dc
+}
+.doc-footer span{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:#c0b4a0}
+.doc-footer .ft-mid{color:${ac}}
+
+@media print{
+  @page{margin:0;size:A4}
+  body{background:#fff}
+  .tbl-wrap{box-shadow:none}
+  .doc-footer{position:fixed;bottom:0}
+  .cover{min-height:100vh;page-break-after:always}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ COVER ═══ -->
+<div class="cover">
+  <!-- Decorative SVG -->
+  <svg class="cover-deco" viewBox="0 0 800 1130" fill="none" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:100%;height:100%">
+    <circle cx="720" cy="160" r="320" stroke="${ac}" stroke-opacity="0.04" stroke-width="1"/>
+    <circle cx="720" cy="160" r="220" stroke="${ac}" stroke-opacity="0.05" stroke-width="1"/>
+    <circle cx="720" cy="160" r="120" stroke="${ac}" stroke-opacity="0.07" stroke-width="1"/>
+    <circle cx="720" cy="160" r="50"  fill="${ac}" fill-opacity="0.06"/>
+    <line x1="0" y1="900" x2="800" y2="900" stroke="white" stroke-opacity="0.04" stroke-width="1"/>
+    <line x1="80" y1="900" x2="80" y2="1130" stroke="${ac}" stroke-opacity="0.12" stroke-width="1"/>
+    <rect x="80" y="900" width="640" height="1" fill="${ac}" fill-opacity="0.15"/>
+  </svg>
+
+  <div class="cover-inner">
+    <div class="cover-top">
+      <div class="cover-brand">Too Good</div>
+      <div class="cover-ref">Ref: TG-DIET-${yr}</div>
+    </div>
+
+    <div class="cover-mid">
+      <div class="cover-eyebrow">Personalised Nutrition Programme</div>
+      <div class="cover-h1">Diet<br><em>Plan.</em></div>
+      <div class="cover-rule"></div>
+      <div class="cover-tagline">A precision-crafted nutrition plan tailored to your body, goals, and lifestyle — powered by Too Good AI.</div>
+    </div>
+
+    <div class="cover-bottom">
+      <div class="cover-meta">
+        <div>Prepared on</div>
+        <div>${date}</div>
+      </div>
+      <div class="cover-seal">Powered by Too Good AI</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE HEADER ═══ -->
+<div class="page-header">
+  <span class="page-header-brand">Too Good</span>
+  <span class="page-header-title">Personalised Diet Plan</span>
+  <span class="page-header-date">${date}</span>
+</div>
+
+<!-- ═══ CONTENT ═══ -->
+<div class="content">
+  ${mdToHtml(msg.content)}
+</div>
+
+<!-- ═══ FOOTER ═══ -->
+<div class="doc-footer">
+  <span>Too Good</span>
+  <span class="ft-mid">Personalised Diet Plan</span>
+  <span>${date}</span>
+</div>
+
+<script>document.fonts.ready.then(()=>setTimeout(()=>window.print(),500))</script>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    window.open(URL.createObjectURL(blob), '_blank');
+  }
+
   return (
     <View style={[st.msgRow, isUser && st.msgRowUser]}>
       {isUser
@@ -353,13 +633,30 @@ function MessageRow({ msg, initials, onCopy, mc, accentColor, st }) {
       <View style={st.msgBubbleWrap}>
         <MsgText text={msg.content} mc={mc} accentColor={accentColor} />
         {Platform.OS === 'web' && (
-          <View style={st.msgActions}>
-            <TouchableOpacity style={st.msgActionBtn} onPress={handleCopy}>
-              <CopyIcon size={10} color={copied ? accentColor : mc.text3} />
-              <Text style={[st.msgActionTxt, copied && { color: accentColor }]}>
-                {copied ? 'Copied!' : 'Copy'}
-              </Text>
-            </TouchableOpacity>
+          <View style={{ marginTop: 10, gap: 8 }}>
+            {msg.isDiet && (
+              <TouchableOpacity
+                onPress={handleDownloadDiet}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  backgroundColor: accentColor, alignSelf: 'flex-start',
+                  paddingVertical: 9, paddingHorizontal: 18, borderRadius: 4,
+                }}
+              >
+                <ExportIcon size={13} color="#080808" />
+                <Text style={{ fontFamily: F.mono, fontSize: 12, color: '#080808', fontWeight: '700', letterSpacing: 1 }}>
+                  Save as PDF
+                </Text>
+              </TouchableOpacity>
+            )}
+            <View style={st.msgActions}>
+              <TouchableOpacity style={st.msgActionBtn} onPress={handleCopy}>
+                <CopyIcon size={10} color={copied ? accentColor : mc.text3} />
+                <Text style={[st.msgActionTxt, copied && { color: accentColor }]}>
+                  {copied ? 'Copied!' : 'Copy'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </View>
@@ -431,7 +728,21 @@ const MCQ_STEPS = [
   },
 ];
 
-function buildDietPrompt(a) {
+function computeTDEE({ weight, height, age, gender, activity }) {
+  const bmr = 10 * weight + 6.25 * height - 5 * age + (gender === 'female' ? -161 : 5);
+  const mult = { sedentary: 1.2, lightly_active: 1.375, moderately_active: 1.55, very_active: 1.725 };
+  return Math.round(bmr * (mult[activity] || 1.55));
+}
+
+function resolveVal(map, val) {
+  if (Array.isArray(val)) {
+    return val.map(v => v.startsWith('custom:') ? v.slice(7) : (map[v] || v)).join('; ');
+  }
+  if (typeof val === 'string' && val.startsWith('custom:')) return val.slice(7);
+  return map[val] || val;
+}
+
+function buildDietPrompt(a, profileData) {
   const gMap = {
     weight_loss: 'weight loss — calorie deficit (300–500 kcal below TDEE), high protein, high fibre, filling whole foods',
     weight_gain: 'weight gain — calorie surplus (300–500 kcal above TDEE), high protein (1.6–2 g/kg), nutrient-dense calorie-rich foods, frequent meals',
@@ -458,106 +769,336 @@ function buildDietPrompt(a) {
     '1_week':  '7 days — full week, different meals daily',
     '2_weeks': '14 days — two full weeks, avoid repetition',
   };
-  return `Create a detailed, personalised diet plan with these specifications:\n\n• Goal: ${gMap[a.goal] || a.goal}\n• Meals per day: ${mMap[a.meals] || a.meals}\n• Dietary type: ${dMap[a.diet_type] || a.diet_type}\n• Restrictions: ${rMap[a.restrictions] || a.restrictions}\n• Duration: ${tMap[a.duration] || a.duration}\n\nFor every meal include: specific foods with portion sizes in grams or standard measures, estimated kcal per meal, and protein / carbs / fat breakdown. End each day with a daily total (kcal, P, C, F). Keep the food practical, available in India, and something a real person would actually want to eat.`;
+  let profileSection = '';
+  if (profileData && profileData.weight && profileData.height && profileData.age) {
+    const bmi = (profileData.weight / Math.pow(profileData.height / 100, 2)).toFixed(1);
+    const tdee = computeTDEE(profileData);
+    const actLabel = { sedentary: 'Sedentary', lightly_active: 'Lightly active', moderately_active: 'Moderately active', very_active: 'Very active' };
+    profileSection = `\n\nPerson's stats:\n• Age: ${profileData.age} years\n• Weight: ${profileData.weight} kg\n• Height: ${profileData.height} cm\n• Gender: ${profileData.gender || 'not specified'}\n• BMI: ${bmi}\n• Activity: ${actLabel[profileData.activity] || 'Moderate'}\n• Estimated TDEE: ~${tdee} kcal/day\n\nCalibrate all portions, calorie targets, and macro splits precisely to these stats.`;
+  }
+  return `Create a detailed, personalised diet plan with these specifications:\n\n• Goal: ${resolveVal(gMap, a.goal)}\n• Meals per day: ${resolveVal(mMap, a.meals)}\n• Dietary type: ${resolveVal(dMap, a.diet_type)}\n• Restrictions: ${resolveVal(rMap, a.restrictions)}\n• Duration: ${resolveVal(tMap, a.duration)}${profileSection}\n\nFORMAT RULES — follow exactly:\n1. Present the full plan as a markdown table with these columns: Day | Meal | Food & Portion | Kcal | Protein (g) | Carbs (g) | Fat (g)\n2. Add a summary row after each day's meals: e.g. | Monday Total | — | — | 1850 | 142 | 195 | 58 |\n3. After the table, add a short 3-bullet "Coach notes" section.\n4. Keep foods practical, available in India, and genuinely tasty.`;
 }
 
-function DietMCQModal({ visible, onClose, onSubmit, mc, accentColor, st }) {
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [selected, setSelected] = useState(null);
+const ACTIVITY_OPTS = [
+  { val: 'sedentary',         label: 'Sedentary',          desc: 'Desk job, little to no exercise' },
+  { val: 'lightly_active',    label: 'Lightly active',     desc: '1–3 days of exercise per week' },
+  { val: 'moderately_active', label: 'Moderately active',  desc: '3–5 days of exercise per week' },
+  { val: 'very_active',       label: 'Very active',        desc: '6–7 days or physical job' },
+];
+
+function BmiBar({ bmi, accentColor, mc }) {
+  const ranges = [
+    { label: 'Under', end: 18.5, color: '#5B9DD9' },
+    { label: 'Normal', end: 25,  color: '#4CAF7C' },
+    { label: 'Over',   end: 30,  color: '#FFB74D' },
+    { label: 'Obese',  end: 40,  color: '#E57373' },
+  ];
+  const pct = Math.min(Math.max(((bmi - 10) / 30) * 100, 2), 98);
+  return (
+    <View style={{ marginVertical: 14 }}>
+      <View style={{ flexDirection: 'row', height: 12, borderRadius: 2, overflow: 'hidden' }}>
+        {ranges.map(r => <View key={r.label} style={{ flex: 1, backgroundColor: r.color }} />)}
+      </View>
+      <View style={{ position: 'relative', height: 20, marginTop: 2 }}>
+        <View style={{ position: 'absolute', left: `${pct}%`, transform: [{ translateX: -6 }] }}>
+          <Text style={{ fontFamily: F.mono, fontSize: 14, color: accentColor }}>▲</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {ranges.map(r => <Text key={r.label} style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3 }}>{r.label}</Text>)}
+      </View>
+      <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, textAlign: 'center', marginTop: 4 }}>
+        18.5 ─────── 25 ─────── 30
+      </Text>
+    </View>
+  );
+}
+
+function DietMCQModal({ visible, onClose, onSubmit, mc, accentColor, st, profile }) {
+  const [phase,        setPhase]        = useState('mcq');
+  const [step,         setStep]         = useState(0);
+  const [answers,      setAnswers]      = useState({});
+  const [selectedVals, setSelectedVals] = useState([]);
+  const [customText,   setCustomText]   = useState('');
+  const [otherAge,     setOtherAge]     = useState('');
+  const [otherWeight,  setOtherWeight]  = useState('');
+  const [otherHeight,  setOtherHeight]  = useState('');
+  const [otherGender,  setOtherGender]  = useState('male');
+  const [otherAct,     setOtherAct]     = useState('moderately_active');
+  const [bmiData,      setBmiData]      = useState(null);
+  const [otherErr,     setOtherErr]     = useState('');
 
   function reset() {
-    setStep(0);
-    setAnswers({});
-    setSelected(null);
+    setPhase('mcq'); setStep(0); setAnswers({}); setSelectedVals([]); setCustomText('');
+    setOtherAge(''); setOtherWeight(''); setOtherHeight('');
+    setOtherGender('male'); setOtherAct('moderately_active');
+    setBmiData(null); setOtherErr('');
   }
 
-  function handleOpt(val) {
-    setSelected(val);
+  function toggleOption(val) {
+    setSelectedVals(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]);
   }
 
-  function handleNext() {
-    if (!selected) return;
+  function handleMcqNext() {
+    const hasSelection = selectedVals.length > 0 || customText.trim();
+    if (!hasSelection) return;
     const cur = MCQ_STEPS[step];
-    const newAnswers = { ...answers, [cur.id]: selected };
+    const all = customText.trim() ? [...selectedVals, `custom:${customText.trim()}`] : selectedVals;
+    const newAnswers = { ...answers, [cur.id]: all.length === 1 ? all[0] : all };
     setAnswers(newAnswers);
-    setSelected(null);
+    setSelectedVals([]); setCustomText('');
     if (step + 1 >= MCQ_STEPS.length) {
-      onSubmit(buildDietPrompt(newAnswers));
-      reset();
+      setPhase('who');
     } else {
       setStep(step + 1);
     }
   }
 
-  function handleSkip() {
-    onClose();
+  function handleForMe() {
+    const p = {
+      weight: parseFloat(profile?.weight_kg) || null,
+      height: parseFloat(profile?.height_cm) || null,
+      age:    parseInt(profile?.age)           || null,
+      gender: profile?.gender                  || 'not specified',
+      activity: 'moderately_active',
+    };
+    onSubmit(buildDietPrompt(answers, p.weight && p.height && p.age ? p : null));
     reset();
+  }
+
+  function handleOtherSubmit() {
+    const w = parseFloat(otherWeight), h = parseFloat(otherHeight), a = parseInt(otherAge);
+    if (!w || !h || !a) { setOtherErr('Please fill in age, weight, and height.'); return; }
+    if (a < 5 || a > 120) { setOtherErr('Enter a valid age.'); return; }
+    if (w < 20 || w > 300) { setOtherErr('Enter a valid weight in kg.'); return; }
+    if (h < 100 || h > 250) { setOtherErr('Enter a valid height in cm.'); return; }
+    const bmi = w / Math.pow(h / 100, 2);
+    const p = { weight: w, height: h, age: a, gender: otherGender, activity: otherAct };
+    if (bmi < 18.5 && answers.goal === 'weight_loss') {
+      setBmiData({ bmi: bmi.toFixed(1), profile: p });
+      setPhase('bmi_warn');
+    } else {
+      onSubmit(buildDietPrompt(answers, p));
+      reset();
+    }
   }
 
   if (!visible) return null;
 
-  const cur = MCQ_STEPS[step];
-  const progress = ((step / MCQ_STEPS.length) * 100).toFixed(0);
+  const closeBtn = (
+    <TouchableOpacity onPress={() => { onClose(); reset(); }} style={{ position: 'absolute', top: 12, right: 12, padding: 8 }}>
+      <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={mc.text2} strokeWidth={1.8} strokeLinecap="round">
+        <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+      </Svg>
+    </TouchableOpacity>
+  );
 
-  return (
-    <View style={st.modalOverlay}>
-      <View style={[st.modalCard, { position: 'relative' }]}>
-        <TouchableOpacity onPress={onClose} style={{ position: 'absolute', top: 12, right: 12, padding: 6 }}>
-          <Text style={{ color: mc.text2, fontFamily: "'Courier Prime', monospace", fontSize: 16, lineHeight: 16 }}>✕</Text>
-        </TouchableOpacity>
-        <Text style={st.mcqEyebrow}>Question {step + 1} of {MCQ_STEPS.length}</Text>
-        <View style={st.mcqProgBar}>
-          <View style={[st.mcqProgFill, { width: `${progress}%` }]} />
+  // ── Phase: MCQ ──────────────────────────────────────────────────────
+  if (phase === 'mcq') {
+    const cur = MCQ_STEPS[step];
+    const progress = ((step / MCQ_STEPS.length) * 100).toFixed(0);
+    const hasSelection = selectedVals.length > 0 || customText.trim().length > 0;
+    return (
+      <View style={st.modalOverlay}>
+        <View style={[st.modalCard, { position: 'relative' }]}>
+          {closeBtn}
+          <Text style={st.mcqEyebrow}>Question {step + 1} of {MCQ_STEPS.length}</Text>
+          <View style={st.mcqProgBar}><View style={[st.mcqProgFill, { width: `${progress}%` }]} /></View>
+          <Text style={st.mcqQ}>{cur.q}</Text>
+          <Text style={[st.mcqOptDesc, { marginBottom: 8, color: mc.text3 }]}>Select all that apply</Text>
+          <View style={st.mcqOpts}>
+            {cur.opts.map(o => {
+              const isSel = selectedVals.includes(o.val);
+              return (
+                <TouchableOpacity key={o.val} style={[st.mcqOpt, isSel && st.mcqOptSelected]} onPress={() => toggleOption(o.val)}>
+                  <View style={[st.mcqOptCheck, isSel && st.mcqOptCheckSel]}>
+                    {isSel && (
+                      <Svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="#080808" strokeWidth="2.2" strokeLinecap="round">
+                        <Polyline points="2,6 5,9 10,3" />
+                      </Svg>
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[st.mcqOptLabel, isSel && { color: accentColor }]}>{o.label}</Text>
+                    <Text style={st.mcqOptDesc}>{o.desc}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+            <View style={[st.mcqOpt, { paddingVertical: 8 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[st.mcqOptDesc, { marginBottom: 4 }]}>Something else?</Text>
+                <TextInput
+                  value={customText}
+                  onChangeText={setCustomText}
+                  placeholder="Type your own answer..."
+                  placeholderTextColor={mc.text3}
+                  style={{
+                    fontFamily: F.mono, fontSize: 13, color: mc.text,
+                    borderBottomWidth: 1, borderBottomColor: customText.trim() ? accentColor : mc.border,
+                    paddingVertical: 4, outlineWidth: 0, backgroundColor: 'transparent',
+                  }}
+                />
+              </View>
+            </View>
+          </View>
+          <View style={st.mcqFooter}>
+            <TouchableOpacity onPress={() => { onClose(); reset(); }}>
+              <Text style={st.mcqSkip}>Skip — just wing it with the AI</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[st.mcqNextBtn, !hasSelection && st.mcqNextBtnOff]}
+              onPress={handleMcqNext}
+              disabled={!hasSelection}
+            >
+              <Text style={[st.mcqNextBtnTxt, !hasSelection && { opacity: 0.3 }]}>
+                {step + 1 >= MCQ_STEPS.length ? 'Next →' : 'Next'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <Text style={st.mcqQ}>{cur.q}</Text>
-        <View style={st.mcqOpts}>
-          {cur.opts.map(o => {
-            const isSel = selected === o.val;
-            return (
-              <TouchableOpacity
-                key={o.val}
-                style={[st.mcqOpt, isSel && st.mcqOptSelected]}
-                onPress={() => handleOpt(o.val)}
-              >
-                <View style={[st.mcqOptCheck, isSel && st.mcqOptCheckSel]}>
-                  {isSel && (
-                    <Svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="#080808" strokeWidth="2.2" strokeLinecap="round">
-                      <Polyline points="2,6 5,9 10,3" />
-                    </Svg>
-                  )}
-                </View>
+      </View>
+    );
+  }
+
+  // ── Phase: Who is this for? ─────────────────────────────────────────
+  if (phase === 'who') {
+    return (
+      <View style={st.modalOverlay}>
+        <View style={[st.modalCard, { position: 'relative' }]}>
+          {closeBtn}
+          <Text style={st.mcqEyebrow}>Almost there</Text>
+          <Text style={st.mcqQ}>Who is this diet plan for?</Text>
+          <View style={{ gap: 10, marginBottom: 24 }}>
+            <TouchableOpacity
+              style={[st.mcqOpt, { padding: 16 }]}
+              onPress={handleForMe}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[st.mcqOptLabel, { color: accentColor }]}>For me</Text>
+                <Text style={st.mcqOptDesc}>I'll use my profile stats already saved in the app</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[st.mcqOpt, { padding: 16 }]}
+              onPress={() => setPhase('other_data')}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={st.mcqOptLabel}>For someone else</Text>
+                <Text style={st.mcqOptDesc}>I'll enter their age, weight, height and activity level</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Phase: Collect other person's data ─────────────────────────────
+  if (phase === 'other_data') {
+    const inpStyle = [st.mcqOpt, { paddingVertical: 8, paddingHorizontal: 12, marginBottom: 0 }];
+    return (
+      <View style={st.modalOverlay}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={[st.modalCard, { position: 'relative', width: 480, maxWidth: '95%' }]}>
+          {closeBtn}
+          <Text style={st.mcqEyebrow}>Their details</Text>
+          <Text style={[st.mcqQ, { marginBottom: 16 }]}>Tell us about the person</Text>
+
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={st.mcqOptDesc}>Age (years)</Text>
+              <TextInput style={[inpStyle, { fontFamily: F.mono, fontSize: 14, color: mc.text, outlineWidth: 0 }]}
+                value={otherAge} onChangeText={setOtherAge} keyboardType="number-pad" placeholder="25" placeholderTextColor={mc.text3} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={st.mcqOptDesc}>Weight (kg)</Text>
+              <TextInput style={[inpStyle, { fontFamily: F.mono, fontSize: 14, color: mc.text, outlineWidth: 0 }]}
+                value={otherWeight} onChangeText={setOtherWeight} keyboardType="decimal-pad" placeholder="65" placeholderTextColor={mc.text3} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={st.mcqOptDesc}>Height (cm)</Text>
+              <TextInput style={[inpStyle, { fontFamily: F.mono, fontSize: 14, color: mc.text, outlineWidth: 0 }]}
+                value={otherHeight} onChangeText={setOtherHeight} keyboardType="decimal-pad" placeholder="170" placeholderTextColor={mc.text3} />
+            </View>
+          </View>
+
+          <Text style={[st.mcqOptDesc, { marginBottom: 6 }]}>Gender</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+            {[['male','Male'],['female','Female'],['other','Other']].map(([v,l]) => (
+              <TouchableOpacity key={v} onPress={() => setOtherGender(v)}
+                style={[st.mcqOpt, { flex: 1, paddingVertical: 8, borderColor: otherGender === v ? accentColor : mc.border, backgroundColor: otherGender === v ? accentColor + '18' : 'transparent' }]}>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: otherGender === v ? accentColor : mc.text3, textAlign: 'center' }}>{l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[st.mcqOptDesc, { marginBottom: 6 }]}>Activity level</Text>
+          <View style={{ gap: 6, marginBottom: 16 }}>
+            {ACTIVITY_OPTS.map(o => (
+              <TouchableOpacity key={o.val} onPress={() => setOtherAct(o.val)}
+                style={[st.mcqOpt, { flexDirection: 'row', alignItems: 'center', borderColor: otherAct === o.val ? accentColor : mc.border, backgroundColor: otherAct === o.val ? accentColor + '18' : 'transparent' }]}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[st.mcqOptLabel, isSel && { color: accentColor }]}>{o.label}</Text>
+                  <Text style={[st.mcqOptLabel, otherAct === o.val && { color: accentColor }]}>{o.label}</Text>
                   <Text style={st.mcqOptDesc}>{o.desc}</Text>
                 </View>
               </TouchableOpacity>
-            );
-          })}
+            ))}
+          </View>
+
+          {!!otherErr && <Text style={{ fontFamily: F.mono, fontSize: 11, color: '#E57373', marginBottom: 10 }}>{otherErr}</Text>}
+
+          <View style={st.mcqFooter}>
+            <TouchableOpacity onPress={() => setPhase('who')}>
+              <Text style={st.mcqSkip}>← Back</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={st.mcqNextBtn} onPress={handleOtherSubmit}>
+              <Text style={st.mcqNextBtnTxt}>Build plan →</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={st.mcqFooter}>
-          <TouchableOpacity onPress={handleSkip}>
-            <Text style={st.mcqSkip}>Skip — just wing it with the AI</Text>
-          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ── Phase: BMI warning (underweight + weight loss goal) ────────────
+  if (phase === 'bmi_warn') {
+    return (
+      <View style={st.modalOverlay}>
+        <View style={[st.modalCard, { position: 'relative' }]}>
+          {closeBtn}
+          <Text style={[st.mcqEyebrow, { color: '#5B9DD9' }]}>BMI Check</Text>
+          <Text style={[st.mcqQ, { marginBottom: 8 }]}>Weight loss not recommended</Text>
+          <Text style={[st.mcqOptDesc, { marginBottom: 14, lineHeight: 20 }]}>
+            This person's BMI is <Text style={{ color: '#5B9DD9', fontWeight: '700' }}>{bmiData?.bmi}</Text>, which is below the healthy range (18.5–24.9).
+            {'\n\n'}A weight loss plan would be unsafe. We've automatically switched to a <Text style={{ color: accentColor }}>weight gain plan</Text> to help them reach a healthy weight.
+          </Text>
+          <BmiBar bmi={parseFloat(bmiData?.bmi || 16)} accentColor={accentColor} mc={mc} />
           <TouchableOpacity
-            style={[st.mcqNextBtn, !selected && st.mcqNextBtnOff]}
-            onPress={handleNext}
-            disabled={!selected}
+            style={[st.mcqNextBtn, { marginTop: 16, alignSelf: 'stretch', alignItems: 'center', paddingVertical: 14 }]}
+            onPress={() => {
+              onSubmit(buildDietPrompt({ ...answers, goal: 'weight_gain' }, bmiData?.profile));
+              reset();
+            }}
           >
-            <Text style={[st.mcqNextBtnTxt, !selected && { opacity: 0.3 }]}>
-              {step + 1 >= MCQ_STEPS.length ? 'Build plan' : 'Next'}
-            </Text>
+            <Text style={st.mcqNextBtnTxt}>Got it — build weight gain plan →</Text>
           </TouchableOpacity>
         </View>
       </View>
-    </View>
-  );
+    );
+  }
+
+  return null;
 }
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function AIScreen({ navigation }) {
   const { mc, accentColor, fontSize, borderRadius } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const isMobile = screenWidth < 640;
+  const [showSessSidebar, setShowSessSidebar] = useState(false);
   const [username,   setUsername]   = useState('');
   const [sessions,   setSessions]   = useState([]);
   const [sessionId,  setSessionId]  = useState(() => `sess_${Date.now()}`);
@@ -571,6 +1112,7 @@ export default function AIScreen({ navigation }) {
   const [showScanner, setShowScanner] = useState(false);
   const [showMCQ,    setShowMCQ]    = useState(false);
   const [wizardShown, setWizardShown] = useState(false);
+  const [profile,    setProfile]    = useState(null);
   const [funnyIdx,   setFunnyIdx]   = useState(0);
   const [showRegen,  setShowRegen]  = useState(false);
   const [banUntil,   setBanUntil]   = useState(null);
@@ -587,11 +1129,15 @@ export default function AIScreen({ navigation }) {
   // ── Load user & sessions ──────────────────────────────────────────
 
   useEffect(() => {
-    getUser().then(u => {
+    getUser().then(async u => {
       if (u) {
         const name = typeof u === 'string' ? u : (u.username || u.email || '');
         setUsername(name);
         loadSessions(name);
+        // Persist wizard-shown state so MCQ doesn't re-appear on every mount
+        const shown = await AsyncStorage.getItem(`tg_diet_wizard_${name}`);
+        if (shown) setWizardShown(true);
+        getMe().then(d => { if (d?.username || d?.email) setProfile(d); }).catch(() => {});
       }
     });
   }, []);
@@ -746,13 +1292,14 @@ export default function AIScreen({ navigation }) {
 
   // ── Core send ─────────────────────────────────────────────────────
 
-  async function send(text) {
+  async function send(text, isDietPlan = false) {
     text = (text || input).trim();
     if (!text || loading) return;
     if (isDietQuery(text) && !wizardShown) {
       setInput('');
       setShowMCQ(true);
       setWizardShown(true);
+      if (username) AsyncStorage.setItem(`tg_diet_wizard_${username}`, '1').catch(() => {});
       return;
     }
     setInput('');
@@ -781,7 +1328,7 @@ export default function AIScreen({ navigation }) {
         return;
       }
       const reply = d.reply || 'No response.';
-      const withReply = [...next, { role: 'assistant', content: reply }];
+      const withReply = [...next, { role: 'assistant', content: reply, isDiet: isDietPlan }];
       setMessages(withReply);
       persistCurrentSession(withReply);
       setShowRegen(true);
@@ -908,7 +1455,7 @@ export default function AIScreen({ navigation }) {
   // ── Session sidebar ──────────────────────────────────────────────
   sessSidebar: {
     width: 240,
-    backgroundColor: '#080808',
+    backgroundColor: mc.sidebar,
     borderRightWidth: 1,
     borderRightColor: mc.border,
     flexDirection: 'column',
@@ -1566,13 +2113,16 @@ export default function AIScreen({ navigation }) {
   },
 });
 
+  const sessSidebarVisible = isMobile ? showSessSidebar : true;
+
   return (
     <View style={st.screen}>
       <View style={st.layout}>
 
         {/* ── SESSION SIDEBAR ── */}
-        <View style={st.sessSidebar}>
-          <TouchableOpacity style={st.newChatBtn} onPress={newChat}>
+        {sessSidebarVisible && (
+        <View style={[st.sessSidebar, isMobile && { position: 'absolute', top: 0, left: 0, bottom: 0, zIndex: 20, width: 260 }]}>
+          <TouchableOpacity style={st.newChatBtn} onPress={() => { newChat(); if (isMobile) setShowSessSidebar(false); }}>
             <PlusIcon size={12} color={mc.text2} />
             <Text style={st.newChatTxt}>New conversation</Text>
           </TouchableOpacity>
@@ -1585,7 +2135,7 @@ export default function AIScreen({ navigation }) {
               <>
                 <Text style={st.sessLabel}>TODAY</Text>
                 {todaySess.map(s => (
-                  <SessRow key={s.id} s={s} cur={sessionId} onOpen={openSession} onDel={delSession} mc={mc} accentColor={accentColor} st={st} />
+                  <SessRow key={s.id} s={s} cur={sessionId} onOpen={sess => { openSession(sess); if (isMobile) setShowSessSidebar(false); }} onDel={delSession} mc={mc} accentColor={accentColor} st={st} />
                 ))}
               </>
             )}
@@ -1593,7 +2143,7 @@ export default function AIScreen({ navigation }) {
               <>
                 <Text style={st.sessLabel}>YESTERDAY</Text>
                 {yesterdaySess.map(s => (
-                  <SessRow key={s.id} s={s} cur={sessionId} onOpen={openSession} onDel={delSession} mc={mc} accentColor={accentColor} st={st} />
+                  <SessRow key={s.id} s={s} cur={sessionId} onOpen={sess => { openSession(sess); if (isMobile) setShowSessSidebar(false); }} onDel={delSession} mc={mc} accentColor={accentColor} st={st} />
                 ))}
               </>
             )}
@@ -1601,18 +2151,35 @@ export default function AIScreen({ navigation }) {
               <>
                 <Text style={st.sessLabel}>OLDER</Text>
                 {olderSess.map(s => (
-                  <SessRow key={s.id} s={s} cur={sessionId} onOpen={openSession} onDel={delSession} mc={mc} accentColor={accentColor} st={st} />
+                  <SessRow key={s.id} s={s} cur={sessionId} onOpen={sess => { openSession(sess); if (isMobile) setShowSessSidebar(false); }} onDel={delSession} mc={mc} accentColor={accentColor} st={st} />
                 ))}
               </>
             )}
           </ScrollView>
         </View>
+        )}
+
+        {/* Mobile overlay to close sidebar */}
+        {isMobile && showSessSidebar && (
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 19, backgroundColor: 'rgba(0,0,0,0.5)' }}
+            onPress={() => setShowSessSidebar(false)}
+            activeOpacity={1}
+          />
+        )}
 
         {/* ── MAIN AREA ── */}
         <View style={st.main}>
 
           {/* Header */}
           <View style={st.header}>
+            {isMobile && (
+              <TouchableOpacity onPress={() => setShowSessSidebar(s => !s)} style={{ paddingRight: 8, paddingVertical: 4 }}>
+                <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={mc.text3} strokeWidth={2} strokeLinecap="round">
+                  <Path d="M3 12h18M3 6h18M3 18h12" />
+                </Svg>
+              </TouchableOpacity>
+            )}
             <ChatIcon size={13} color={mc.text3} />
             <Text style={st.chatTitle} numberOfLines={1}>{chatTitleText}</Text>
             <TouchableOpacity style={st.headerBtn} onPress={exportChat}>
@@ -1782,10 +2349,11 @@ export default function AIScreen({ navigation }) {
       <DietMCQModal
         visible={showMCQ}
         onClose={() => setShowMCQ(false)}
-        onSubmit={prompt => { setShowMCQ(false); send(prompt); }}
+        onSubmit={prompt => { setShowMCQ(false); send(prompt, true); }}
         mc={mc}
         accentColor={accentColor}
         st={st}
+        profile={profile}
       />
 
       {/* Barcode Scanner */}
@@ -1799,10 +2367,10 @@ export default function AIScreen({ navigation }) {
       {banUntil && (
         <View style={st.banOverlay}>
           <View style={st.banCard}>
-            <Text style={st.banIcon}>😠</Text>
+            <Text style={st.banIcon}></Text>
             <Text style={st.banTitle}>You're in timeout.</Text>
             <Text style={st.banMsg}>
-              {"The AI needed a breather after that last one.\nSit quietly, reflect, maybe eat a vegetable.\n\nNext time talk properly 😊"}
+              {"The AI needed a breather after that last one.\nSit quietly, reflect, maybe eat a vegetable.\n\nNext time talk properly"}
             </Text>
             <Text style={st.banClock}>
               {String(Math.floor(banRemaining / 60)).padStart(2, '0')}:{String(banRemaining % 60).padStart(2, '0')}

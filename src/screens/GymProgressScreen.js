@@ -6,6 +6,7 @@ import { F } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getUser } from '../auth';
 import { EXERCISES } from '../data/exercises';
+import GymOnboardingModal, { gymProfileKey, LIFTS } from '../components/GymOnboardingModal';
 
 function estimated1RM(w, r) { return r === 1 ? w : Math.round(w * (1 + r / 30)); }
 function weekOf(iso) {
@@ -48,14 +49,19 @@ export default function GymProgressScreen() {
   const [workouts,  setWorkouts]  = useState([]);
   const [prs,       setPrs]       = useState({});
   const [activeTab, setActiveTab] = useState('streak');
+  const [gymProfile,    setGymProfile]    = useState(null);
+  const [editingProfile,setEditingProfile]= useState(false);
 
   useEffect(() => {
     getUser().then(async u => {
       const raw = await AsyncStorage.getItem(`tg_gym_${u}`);
-      if (!raw) return;
-      const d = JSON.parse(raw);
-      if (d.workouts) setWorkouts(d.workouts);
-      if (d.prs)      setPrs(d.prs);
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (d.workouts) setWorkouts(d.workouts);
+        if (d.prs)      setPrs(d.prs);
+      }
+      const praw = await AsyncStorage.getItem(gymProfileKey(u));
+      if (praw) setGymProfile(JSON.parse(praw));
     });
   }, []);
 
@@ -134,6 +140,12 @@ export default function GymProgressScreen() {
 
   return (
     <ScrollView style={s.root}>
+      <GymOnboardingModal
+        forceOpen={editingProfile}
+        existingProfile={gymProfile}
+        onComplete={setGymProfile}
+        onClose={() => setEditingProfile(false)}
+      />
       <View style={s.content}>
         <Text style={s.title}>Gym Progress</Text>
         <Text style={s.sub}>YOUR STRENGTH JOURNEY</Text>
@@ -150,9 +162,36 @@ export default function GymProgressScreen() {
         {activeTab === 'streak' && (
           <>
             <View style={s.card}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: gymProfile ? 10 : 0 }}>
+                <Text style={[s.label, { marginBottom: 0 }]}>GYM PROFILE</Text>
+                <TouchableOpacity onPress={() => setEditingProfile(true)}>
+                  <Text style={{ fontFamily: F.mono, fontSize: 10, color: accentColor }}>{gymProfile ? 'Edit' : 'Set up'}</Text>
+                </TouchableOpacity>
+              </View>
+              {gymProfile ? (
+                <>
+                  <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text, textTransform: 'capitalize', marginBottom: 8 }}>{gymProfile.level}</Text>
+                  {gymProfile.maxes && Object.keys(gymProfile.maxes).length > 0 ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+                      {LIFTS.filter(l => gymProfile.maxes[l.key]).map(l => (
+                        <View key={l.key}>
+                          <Text style={{ fontFamily: F.mono, fontSize: 14, color: accentColor }}>{gymProfile.maxes[l.key]}kg</Text>
+                          <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3 }}>{l.label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>No maxes recorded yet.</Text>
+                  )}
+                </>
+              ) : (
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>Set your experience level and maxes to personalise your training.</Text>
+              )}
+            </View>
+            <View style={s.card}>
               <Text style={s.label}>WORKOUT STREAK</Text>
               <Text style={s.stat}>{streakWeeks}</Text>
-              <Text style={s.statSub}>{streakWeeks === 1 ? 'week' : 'weeks'} in a row 🔥</Text>
+              <Text style={s.statSub}>{streakWeeks === 1 ? 'week' : 'weeks'} in a row</Text>
             </View>
             <View style={s.card}>
               <Text style={s.label}>ALL TIME STATS</Text>

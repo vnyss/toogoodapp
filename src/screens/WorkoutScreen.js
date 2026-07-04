@@ -3,11 +3,13 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   TextInput, Modal, ActivityIndicator,
 } from 'react-native';
+import Svg, { Path, Line, Polyline } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { F } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getUser } from '../auth';
 import { EXERCISES } from '../data/exercises';
+import GymOnboardingModal from '../components/GymOnboardingModal';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -286,7 +288,7 @@ export default function WorkoutScreen() {
           {newPRs.length > 0 && (
             <View style={{ backgroundColor: '#FFD70020', borderWidth: 1, borderColor: '#FFD700', padding: 10, marginBottom: 12 }}>
               <Text style={{ fontFamily: F.mono, fontSize: 11, color: '#FFD700' }}>
-                🏆 New PR{newPRs.length > 1 ? 's' : ''}: {newPRs.join(', ')}
+                New PR{newPRs.length > 1 ? 's' : ''}: {newPRs.join(', ')}
               </Text>
             </View>
           )}
@@ -303,8 +305,10 @@ export default function WorkoutScreen() {
                 </TouchableOpacity>
               ))}
               {restRunning && (
-                <TouchableOpacity style={{ borderWidth: 1, borderColor: '#E57373', paddingHorizontal: 8, paddingVertical: 5 }} onPress={stopRest}>
-                  <Text style={{ fontFamily: F.mono, fontSize: 10, color: '#E57373' }}>✕</Text>
+                <TouchableOpacity style={{ borderWidth: 1, borderColor: '#C85A6E', paddingHorizontal: 10, paddingVertical: 6, alignItems: 'center', justifyContent: 'center' }} onPress={stopRest}>
+                  <Svg width={8} height={8} viewBox="0 0 24 24" fill="none" stroke="#C85A6E" strokeWidth={2.5} strokeLinecap="round">
+                    <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+                  </Svg>
                 </TouchableOpacity>
               )}
             </View>
@@ -322,8 +326,10 @@ export default function WorkoutScreen() {
                       <Text style={s.prTxt}>PR {pr.weight}kg×{pr.reps}</Text>
                     </View>
                   )}
-                  <TouchableOpacity onPress={() => removeExercise(ei)} style={{ marginLeft: 8 }}>
-                    <Text style={{ fontFamily: F.mono, fontSize: 12, color: mc.text3 }}>✕</Text>
+                  <TouchableOpacity onPress={() => removeExercise(ei)} style={{ marginLeft: 8, padding: 4 }}>
+                    <Svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke={mc.text3} strokeWidth={2.2} strokeLinecap="round">
+                      <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+                    </Svg>
                   </TouchableOpacity>
                 </View>
 
@@ -355,7 +361,9 @@ export default function WorkoutScreen() {
                       placeholderTextColor={mc.text3}
                     />
                     <TouchableOpacity style={[s.doneBtn, set.done && s.doneBtnA]} onPress={() => toggleSetDone(ei, si)}>
-                      <Text style={[s.doneTxt, set.done && s.doneTxA]}>✓</Text>
+                      <Svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke={set.done ? '#000' : mc.text3} strokeWidth={2.5} strokeLinecap="round">
+                        <Polyline points="20 6 9 17 4 12" />
+                      </Svg>
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -374,7 +382,7 @@ export default function WorkoutScreen() {
           {/* Save as template */}
           {workout.exercises.length > 0 && (
             <TouchableOpacity style={s.outBtn} onPress={() => { setTmplName(workout.name); setShowSaveTmpl(true); }}>
-              <Text style={s.outTxt}>💾 Save as Template</Text>
+              <Text style={s.outTxt}>Save as Template</Text>
             </TouchableOpacity>
           )}
 
@@ -399,8 +407,10 @@ export default function WorkoutScreen() {
           <View style={{ flex: 1, backgroundColor: mc.bg }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: mc.border }}>
               <Text style={{ fontFamily: F.serif, fontSize: 16, color: mc.text, flex: 1 }}>Add Exercise</Text>
-              <TouchableOpacity onPress={() => setShowExPicker(false)}>
-                <Text style={{ fontFamily: F.mono, fontSize: 16, color: mc.text3 }}>✕</Text>
+              <TouchableOpacity onPress={() => setShowExPicker(false)} style={{ padding: 6 }}>
+                <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={mc.text3} strokeWidth={1.8} strokeLinecap="round">
+                  <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+                </Svg>
               </TouchableOpacity>
             </View>
             <TextInput
@@ -454,12 +464,13 @@ export default function WorkoutScreen() {
   // ── HOME ──────────────────────────────────────────────────────────────────
   return (
     <ScrollView style={s.root}>
+      <GymOnboardingModal />
       <View style={s.content}>
         <Text style={s.title}>Workout Tracker</Text>
         <Text style={s.sub}>LOG SETS · REPS · WEIGHT</Text>
 
         <TouchableOpacity style={s.btn} onPress={() => startWorkout()}>
-          <Text style={s.btnTxt}>⚡ START EMPTY WORKOUT</Text>
+          <Text style={s.btnTxt}>START EMPTY WORKOUT</Text>
         </TouchableOpacity>
 
         {/* Templates */}
@@ -476,8 +487,10 @@ export default function WorkoutScreen() {
                   onPress={() => startWorkout(t)}>
                   <Text style={{ fontFamily: F.mono, fontSize: 11, color: accentColor }}>Start</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => deleteTemplate(t.id)}>
-                  <Text style={{ fontFamily: F.mono, fontSize: 12, color: mc.text3 }}>✕</Text>
+                <TouchableOpacity onPress={() => deleteTemplate(t.id)} style={{ padding: 4 }}>
+                  <Svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke={mc.text3} strokeWidth={2.2} strokeLinecap="round">
+                    <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+                  </Svg>
                 </TouchableOpacity>
               </View>
             ))}

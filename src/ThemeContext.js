@@ -12,17 +12,17 @@ export const ACCENT_MAP = {
   teal:   { gold: '#4CB8B8', goldH: '#70D4D4', goldDim: 'rgba(76,184,184,0.07)', border: 'rgba(76,184,184,0.12)',  borderH: 'rgba(76,184,184,0.38)' },
 };
 
-const FS_MAP     = { sm: 12, md: 14, lg: 16 };
+const FS_MAP     = { xs: 10, sm: 12, md: 14, lg: 16, xl: 18 };
 const RADIUS_MAP = { sharp: 0, soft: 6, rounded: 14 };
 
 const DARK_MC = {
-  bg:      '#0A0A0A',
-  sidebar: '#080808',
-  surface: '#111111',
-  elevated:'#181818',
-  text:    '#E8DCC8',
-  text2:   '#8A7A62',
-  text3:   '#4A3C2A',
+  bg:      '#000000',
+  sidebar: '#000000',
+  surface: '#080808',
+  elevated:'#101010',
+  text:    '#E8E0D0',
+  text2:   '#8A7A68',
+  text3:   '#3E3228',
 };
 
 const LIGHT_MC = {
@@ -37,16 +37,16 @@ const LIGHT_MC = {
 
 function buildMc(mode, accent) {
   const base = mode === 'light' ? LIGHT_MC : DARK_MC;
-  const ac = ACCENT_MAP[accent] || ACCENT_MAP.gold;
+  const ac = ACCENT_MAP[accent] || ACCENT_MAP.green;
   return { ...base, border: ac.border, borderH: ac.borderH, goldDim: ac.goldDim };
 }
 
 const defaultTheme = {
   mode: 'dark',
-  accent: 'gold',
-  accentColor: '#C9A84C',
-  accentDim: 'rgba(201,168,76,0.1)',
-  mc: { ...DARK_MC, border: 'rgba(201,168,76,0.12)', borderH: 'rgba(201,168,76,0.38)', goldDim: 'rgba(201,168,76,0.07)' },
+  accent: 'green',
+  accentColor: '#4CAF7C',
+  accentDim: 'rgba(76,175,124,0.1)',
+  mc: { ...DARK_MC, border: 'rgba(76,175,124,0.12)', borderH: 'rgba(76,175,124,0.38)', goldDim: 'rgba(76,175,124,0.07)' },
   fontSize: 14,
   borderRadius: 6,
   weatherEffects: true,
@@ -74,7 +74,7 @@ function keys(username) {
 
 export function ThemeProvider({ username = '', children }) {
   const [mode,           setMode]           = useState('dark');
-  const [accent,         setAccent]         = useState('gold');
+  const [accent,         setAccent]         = useState('green');
   const [fontSize,       setFontSize]       = useState(14);
   const [borderRadius,   setBorderRadius]   = useState(6);
   const [weatherEffects, setWeatherEffects] = useState(true);
@@ -90,7 +90,7 @@ export function ThemeProvider({ username = '', children }) {
       AsyncStorage.getItem(k.weather),
     ]).then(([m, a, fs, corner, wx]) => {
       const finalMode   = m      || 'dark';
-      const finalAccent = a      || 'gold';
+      const finalAccent = a      || 'green';
       setMode(finalMode);
       setAccent(finalAccent);
       applyToDom(finalMode, finalAccent);
@@ -117,12 +117,13 @@ export function ThemeProvider({ username = '', children }) {
     if (weather  !== undefined) { setWeatherEffects(weather);                 AsyncStorage.setItem(k.weather, weather ? 'on' : 'off'); }
   }
 
-  const ac          = ACCENT_MAP[accent] || ACCENT_MAP.gold;
+  const ac          = ACCENT_MAP[accent] || ACCENT_MAP.green;
   const accentColor = ac.gold;
   const accentDim   = ac.goldDim;
+  const accentGlow  = `0 0 10px ${ac.gold}66, 0 0 22px ${ac.gold}30`;
   const mc          = buildMc(mode, accent);
 
-  const value = { mode, accent, accentColor, accentDim, mc, fontSize, borderRadius, weatherEffects, setTheme, setExtras };
+  const value = { mode, accent, accentColor, accentDim, accentGlow, mc, fontSize, borderRadius, weatherEffects, setTheme, setExtras };
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
@@ -130,7 +131,7 @@ export function ThemeProvider({ username = '', children }) {
 function applyToDom(mode, accent) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  const ac = ACCENT_MAP[accent] || ACCENT_MAP.gold;
+  const ac = ACCENT_MAP[accent] || ACCENT_MAP.green;
   root.style.setProperty('--gold', ac.gold);
   root.style.setProperty('--gold-h', ac.goldH);
   root.style.setProperty('--gold-dim', ac.goldDim);
@@ -149,14 +150,14 @@ function applyToDom(mode, accent) {
     document.body.style.color = '#1A1208';
   } else {
     root.classList.remove('light-mode');
-    root.style.setProperty('--bg', '#0A0A0A');
-    root.style.setProperty('--sidebar', '#080808');
-    root.style.setProperty('--surface', '#111111');
-    root.style.setProperty('--elevated', '#181818');
-    root.style.setProperty('--text', '#E8DCC8');
-    root.style.setProperty('--text-2', '#8A7A62');
-    root.style.setProperty('--text-3', '#4A3C2A');
-    document.body.style.backgroundColor = '#0A0A0A';
+    root.style.setProperty('--bg', '#000000');
+    root.style.setProperty('--sidebar', '#000000');
+    root.style.setProperty('--surface', '#080808');
+    root.style.setProperty('--elevated', '#101010');
+    root.style.setProperty('--text', '#E8E0D0');
+    root.style.setProperty('--text-2', '#8A7A68');
+    root.style.setProperty('--text-3', '#3E3228');
+    document.body.style.backgroundColor = '#000000';
     document.body.style.color = '#E8DCC8';
   }
 }

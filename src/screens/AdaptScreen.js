@@ -12,6 +12,7 @@ import { C, F } from '../theme';
 import { useTheme } from '../ThemeContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getUser } from '../auth';
+import { TrendLine, ProgressRing } from '../components/Charts';
 
 // ── Meal plan data (mirrors the HTML opt object exactly) ──────────────────────
 const OPT = {
@@ -126,7 +127,7 @@ export default function AdaptScreen({ navigation }) {
   const { mc, accentColor, fontSize, borderRadius } = useTheme();
   const [loading,    setLoading]    = useState(true);
   const [plan,       setPlan]       = useState({});
-  const [stats,      setStats]      = useState({ avgCal: 0, wtChange: null, days: 0 });
+  const [stats,      setStats]      = useState({ avgCal: 0, wtChange: null, days: 0, calSeries: [], wtSeries: [] });
   const [calInput,   setCalInput]   = useState('');
   const [planKey,    setPlanKey]    = useState('');
   const [logKey,     setLogKey]     = useState('');
@@ -238,7 +239,14 @@ export default function AdaptScreen({ navigation }) {
     const wtChange = wtLogs.length >= 2
       ? (parseFloat(wtLogs[wtLogs.length - 1].weight) - parseFloat(wtLogs[0].weight)).toFixed(1)
       : null;
-    setStats({ avgCal, wtChange, days: calLogs.length });
+
+    // Chart-friendly series (additive — derived from the same week/calLogs/wtLogs already computed above)
+    const calSeries = [...calLogs]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(l => ({ x: l.date, y: l.calories }));
+    const wtSeries = wtLogs.map(l => ({ x: l.date, y: parseFloat(l.weight) }));
+
+    setStats({ avgCal, wtChange, days: calLogs.length, calSeries, wtSeries });
   }
 
   async function saveCalTarget() {
@@ -606,6 +614,45 @@ export default function AdaptScreen({ navigation }) {
             </View>
           </View>
         </View>
+
+        {/* ── Calorie trend vs target (additive chart block) ──────────────── */}
+        {stats.calSeries.length >= 2 && (
+          <View style={{ borderWidth: 1, borderColor: mc.border, padding: 16, marginTop: 20 }}>
+            <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, letterSpacing: 1, marginBottom: 10 }}>CALORIE INTAKE — LAST 7 DAYS</Text>
+            <TrendLine points={stats.calSeries} color={accentColor} mc={mc} fill showDots />
+            {!!target && (
+              <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, marginTop: 8 }}>
+                Target: {target} kcal/day · Average: {avgCal} kcal/day
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* ── Daily target progress ring (additive chart block) ───────────── */}
+        {!!target && !!avgCal && (
+          <View style={{ borderWidth: 1, borderColor: mc.border, padding: 16, marginTop: 14, alignItems: 'center' }}>
+            <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, letterSpacing: 1, marginBottom: 10, alignSelf: 'flex-start' }}>AVG VS TARGET</Text>
+            <ProgressRing
+              value={avgCal}
+              max={target}
+              color={badge.color}
+              mc={mc}
+              label={`${Math.round(Math.min(avgCal / target, 1.5) * 100)}%`}
+              sublabel={`${avgCal} / ${target} kcal`}
+            />
+          </View>
+        )}
+
+        {/* ── Weight trend (additive chart block) ──────────────────────────── */}
+        {stats.wtSeries.length >= 2 && (
+          <View style={{ borderWidth: 1, borderColor: mc.border, padding: 16, marginTop: 14 }}>
+            <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, letterSpacing: 1, marginBottom: 10 }}>WEIGHT TREND — LAST 7 DAYS</Text>
+            <TrendLine points={stats.wtSeries} color={badge.color} mc={mc} showDots />
+            <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, marginTop: 8 }}>
+              {wtChange !== null ? `${Number(wtChange) > 0 ? '+' : ''}${wtChange} kg this week` : ''}
+            </Text>
+          </View>
+        )}
 
         {/* ── Calorie input strip (.adapt-cal-strip) ────────────────────── */}
         <View style={st.calStrip}>

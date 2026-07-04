@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from 'react-native';
-import Svg, { Circle, Path, Text as SvgText, Rect, Line } from 'react-native-svg';
+import Svg, { Circle, Path, Text as SvgText, Rect, Line, Polyline } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { F } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getUser } from '../auth';
+import { watchStatus, watchSyncGoogleFit, watchSyncGarmin, watchData } from '../api';
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function fmtDate(iso) { return new Date(iso + 'T12:00').toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' }); }
@@ -19,11 +20,11 @@ function last7Days() {
 const SLEEP_GOAL = 8;
 
 const QUALITY_OPTS = [
-  { value: 1, label: 'Terrible',  emoji: '😫', color: '#E57373' },
-  { value: 2, label: 'Poor',      emoji: '😞', color: '#FF8A65' },
-  { value: 3, label: 'Fair',      emoji: '😐', color: '#FFB74D' },
-  { value: 4, label: 'Good',      emoji: '🙂', color: '#81C784' },
-  { value: 5, label: 'Excellent', emoji: '😊', color: '#4CAF7C' },
+  { value: 1, label: 'Terrible',  emoji: '', color: '#E57373' },
+  { value: 2, label: 'Poor',      emoji: '', color: '#FF8A65' },
+  { value: 3, label: 'Fair',      emoji: '', color: '#FFB74D' },
+  { value: 4, label: 'Good',      emoji: '', color: '#81C784' },
+  { value: 5, label: 'Excellent', emoji: '', color: '#4CAF7C' },
 ];
 
 const SLEEP_TAGS = [
@@ -116,8 +117,54 @@ export default function SleepTrackerScreen() {
   const [notes,      setNotes]      = useState('');
   const [saved,      setSaved]      = useState(false);
 
+  // Watch sync
+  const [watchConnected,   setWatchConnected]   = useState(null);
+  const [syncing,          setSyncing]          = useState(false);
+  const [syncMsg,          setSyncMsg]          = useState('');
+  const [watchSleepToday,  setWatchSleepToday]  = useState(null); // minutes
+
   const today     = todayISO();
   const todayEntry = allData[today];
+
+  const loadWatchStatus = useCallback(async () => {
+    try {
+      const st = await watchStatus();
+      if (st?.google_fit?.connected)  setWatchConnected('google_fit');
+      else if (st?.garmin?.connected) setWatchConnected('garmin');
+      else setWatchConnected(null);
+      const data  = await watchData(today, today);
+      const entry = (data || []).find(d => d.date === today);
+      if (entry?.sleep_min) setWatchSleepToday(entry.sleep_min);
+    } catch {}
+  }, [today]);
+
+  async function syncSleepFromWatch() {
+    if (!watchConnected) return;
+    setSyncing(true); setSyncMsg('');
+    try {
+      const fn  = watchConnected === 'google_fit' ? watchSyncGoogleFit : watchSyncGarmin;
+      const res = await fn(7);
+      if (res?.ok) {
+        const entry = (res.synced || []).find(d => d.date === today);
+        if (entry?.sleep_min) {
+          setWatchSleepToday(entry.sleep_min);
+          const h = Math.floor(entry.sleep_min / 60);
+          const m = entry.sleep_min % 60;
+          setSyncMsg(`Synced ${h}h ${m}m sleep from ${watchConnected === 'google_fit' ? 'Google Fit' : 'Garmin'}.`);
+          // Pre-fill log form if no entry yet
+          if (!allData[today]) {
+            setHours(String(h));
+            setMinutes(String(m));
+          }
+        } else {
+          setSyncMsg('Synced — no sleep data for today yet.');
+        }
+      } else {
+        setSyncMsg(res?.error || 'Sync failed.');
+      }
+    } catch { setSyncMsg('Sync failed.'); }
+    setSyncing(false);
+  }
 
   useEffect(() => {
     getUser().then(async u => {
@@ -126,7 +173,8 @@ export default function SleepTrackerScreen() {
       const raw = await AsyncStorage.getItem(key);
       if (raw) setAllData(JSON.parse(raw));
     });
-  }, []);
+    loadWatchStatus();
+  }, [loadWatchStatus]);
 
   async function persist(newData) {
     if (!storageKey) return;
@@ -184,12 +232,12 @@ export default function SleepTrackerScreen() {
   const phaseHint = todayEntry ? sleepPhaseHint(todayEntry.hours) : null;
 
   function sleepTip(tags) {
-    if (tags.includes('caffeine')) return '☕ Avoid caffeine after 2pm — it stays in your system for 8+ hours.';
-    if (tags.includes('screen'))   return '📱 Blue light suppresses melatonin. Try stopping screens 1h before bed.';
-    if (tags.includes('alcohol'))  return '🍷 Alcohol disrupts REM sleep and reduces sleep quality.';
-    if (tags.includes('stressed')) return '🧘 Try 4-7-8 breathing before bed to lower cortisol.';
-    if (tags.includes('exercise')) return '💪 Exercise improves deep sleep — just avoid intense workouts within 2h of bedtime.';
-    return '💤 Consistent sleep/wake times are the single biggest factor in sleep quality.';
+    if (tags.includes('caffeine')) return 'Avoid caffeine after 2pm — it stays in your system for 8+ hours.';
+    if (tags.includes('screen'))   return 'Blue light suppresses melatonin. Try stopping screens 1h before bed.';
+    if (tags.includes('alcohol'))  return 'Alcohol disrupts REM sleep and reduces sleep quality.';
+    if (tags.includes('stressed')) return 'Try 4-7-8 breathing before bed to lower cortisol.';
+    if (tags.includes('exercise')) return 'Exercise improves deep sleep — just avoid intense workouts within 2h of bedtime.';
+    return 'Consistent sleep/wake times are the single biggest factor in sleep quality.';
   }
 
   const s = StyleSheet.create({
@@ -213,8 +261,7 @@ export default function SleepTrackerScreen() {
     qrow:    { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
     qopt:    { flex: 1, alignItems: 'center', paddingVertical: 10, borderWidth: 1, borderColor: mc.border },
     qoptA:   { borderWidth: 2 },
-    qemoji:  { fontSize: 20 },
-    qlabel:  { fontFamily: F.mono, fontSize: 8, color: mc.text3, marginTop: 4 },
+    qlabel:  { fontFamily: F.mono, fontSize: 8, color: mc.text3 },
     tagRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     tag:     { paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: mc.border },
     tagA:    { borderColor: SLEEP_COLOR, backgroundColor: SLEEP_COLOR + '18' },
@@ -257,6 +304,31 @@ export default function SleepTrackerScreen() {
         {/* ── LOG ── */}
         {tab === 'log' && (
           <>
+            {/* Watch sync banner */}
+            {watchConnected && (
+              <View style={{ borderWidth: 1, borderColor: accentColor + '30', backgroundColor: accentColor + '0A', padding: 12, marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, letterSpacing: 1, marginBottom: 3 }}>
+                    {watchConnected === 'google_fit' ? 'GOOGLE FIT' : 'GARMIN'} CONNECTED
+                  </Text>
+                  {watchSleepToday != null
+                    ? <Text style={{ fontFamily: F.mono, fontSize: 11, color: accentColor }}>
+                        Today: {Math.floor(watchSleepToday / 60)}h {watchSleepToday % 60}m synced
+                      </Text>
+                    : <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text2 }}>Tap sync to pull today's sleep</Text>
+                  }
+                  {!!syncMsg && <Text style={{ fontFamily: F.mono, fontSize: 10, color: accentColor, marginTop: 3 }}>{syncMsg}</Text>}
+                </View>
+                <TouchableOpacity
+                  style={{ backgroundColor: accentColor, paddingVertical: 7, paddingHorizontal: 12, marginLeft: 10 }}
+                  onPress={syncSleepFromWatch} disabled={syncing}>
+                  <Text style={{ fontFamily: F.mono, fontSize: 10, fontWeight: '700', color: '#0A0A0A' }}>
+                    {syncing ? 'SYNCING…' : 'SYNC'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {todayEntry && !saved && (
               <View style={{ borderWidth: 1, borderColor: SLEEP_COLOR + '44', backgroundColor: SLEEP_COLOR + '11', padding: 12, marginBottom: 14 }}>
                 <Text style={{ fontFamily: F.mono, fontSize: 11, color: SLEEP_COLOR }}>
@@ -266,7 +338,7 @@ export default function SleepTrackerScreen() {
             )}
             {saved && (
               <View style={{ borderWidth: 1, borderColor: '#4CAF7C44', backgroundColor: '#4CAF7C11', padding: 12, marginBottom: 14 }}>
-                <Text style={{ fontFamily: F.mono, fontSize: 11, color: '#4CAF7C' }}>Sleep logged ✓</Text>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: '#4CAF7C' }}>Sleep logged</Text>
               </View>
             )}
 
@@ -293,7 +365,6 @@ export default function SleepTrackerScreen() {
               <View style={s.qrow}>
                 {QUALITY_OPTS.map(o => (
                   <TouchableOpacity key={o.value} style={[s.qopt, quality === o.value && { ...s.qoptA, borderColor: o.color }]} onPress={() => setQuality(o.value)}>
-                    <Text style={s.qemoji}>{o.emoji}</Text>
                     <Text style={[s.qlabel, quality === o.value && { color: o.color }]}>{o.label}</Text>
                   </TouchableOpacity>
                 ))}
@@ -388,7 +459,7 @@ export default function SleepTrackerScreen() {
                 </View>
                 <View>
                   <Text style={[s.statVal, { color: '#FFB74D' }]}>{streak}</Text>
-                  <Text style={s.statLbl}>DAY STREAK 🔥</Text>
+                  <Text style={s.statLbl}>DAY STREAK</Text>
                 </View>
               </View>
             </View>
@@ -425,7 +496,7 @@ export default function SleepTrackerScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontFamily: F.mono, fontSize: 12, color: mc.text }}>{fmtDate(iso)}</Text>
                         <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3 }}>
-                          {qObj?.emoji} {qObj?.label}{e.bedTime ? `  ·  ${e.bedTime}–${e.wakeTime}` : ''}
+                          {qObj?.label}{e.bedTime ? `  ·  ${e.bedTime}–${e.wakeTime}` : ''}
                         </Text>
                         {e.tags?.length > 0 && (
                           <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3 }}>{e.tags.join(', ')}</Text>

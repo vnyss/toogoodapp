@@ -13,6 +13,7 @@ import { useTheme } from '../ThemeContext';
 import { saveExerciseSchedule } from '../api';
 import { getToken, getUser } from '../auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BarChart } from '../components/Charts';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -208,6 +209,16 @@ export default function ExerciseScreen({ navigation }) {
     } catch {}
     setSaving(false);
   }
+
+  // ── Weekly minutes chart data ───────────────────────────────────────────────
+  // Sum scheduled exercise minutes per active day, from startH/endH of each exercise.
+  const weeklyMinutesData = DAYS.map(day => {
+    const d = schedule[day];
+    const mins = d && d.active && d.exercises
+      ? d.exercises.reduce((sum, e) => sum + Math.max(0, (e.endH - e.startH) * 60), 0)
+      : 0;
+    return { label: day.slice(0, 2), v: Math.round(mins) };
+  });
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -557,6 +568,30 @@ export default function ExerciseScreen({ navigation }) {
     opacity: 0.7,
     textDecorationLine: 'underline',
   },
+
+  // Chart card
+  chartCard: {
+    borderWidth: 1,
+    borderColor: mc.border,
+    padding: 16,
+    marginBottom: 14,
+    backgroundColor: mc.surface,
+    borderRadius: borderRadius,
+  },
+  chartLabel: {
+    fontFamily: F.mono,
+    fontSize: 10,
+    color: mc.text3,
+    letterSpacing: 1,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  chartCaption: {
+    fontFamily: F.mono,
+    fontSize: 9,
+    color: mc.text3,
+    marginTop: 6,
+  },
 });
 
   return (
@@ -581,6 +616,15 @@ export default function ExerciseScreen({ navigation }) {
             }
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* ── Section: Weekly exercise minutes ── */}
+      <View style={styles.chartCard}>
+        <Text style={styles.chartLabel}>Scheduled minutes per day</Text>
+        <BarChart data={weeklyMinutesData} color={accentColor} mc={mc} height={80} />
+        <Text style={styles.chartCaption}>
+          Total scheduled this week: {weeklyMinutesData.reduce((s, d) => s + d.v, 0)} min
+        </Text>
       </View>
 
       {/* ── Section: My exercises (pool) ── */}

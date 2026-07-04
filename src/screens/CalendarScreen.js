@@ -9,6 +9,7 @@ import { C, F, S } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getToken, getUser } from '../auth';
 import { calendarEdit, saveExerciseTimes, calendarRemind } from '../api';
+import { HeatmapGrid } from '../components/Charts';
 
 /* ── Constants ─────────────────────────────────────────────────────────── */
 
@@ -400,6 +401,20 @@ export default function CalendarScreen({ navigation }) {
   const cells  = buildGridCells(year, month);
   const today  = todayISO();
 
+  /* ── Activity density heatmap (current month, in-month cells only) ───── */
+  const monthCells = cells.filter(c => c.inMonth);
+  const monthBlockCounts = monthCells.map(c => {
+    const { isAct } = dayTypeForISO(c.iso);
+    return blocksForDay(c.iso, isAct).length;
+  });
+  const maxBlockCount = Math.max(...monthBlockCounts, 1);
+  const heatmapCells = monthCells.map((c, i) => ({
+    key: c.iso,
+    intensity: monthBlockCounts[i] / maxBlockCount,
+  }));
+  const totalActivities = monthBlockCounts.reduce((s, n) => s + n, 0);
+  const activeDaysCount = monthBlockCounts.filter(n => n > 0).length;
+
   /* ── Selected day blocks ──────────────────────────────────────────────── */
   const selType   = selectedISO ? dayTypeForISO(selectedISO) : null;
   const selBlocks = selectedISO
@@ -562,6 +577,15 @@ export default function CalendarScreen({ navigation }) {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        {/* ── Activity density heatmap (supplementary summary) ── */}
+        <View style={st.heatmapCard}>
+          <Text style={st.heatmapLabel}>Activity density — {MONTHS[month]}</Text>
+          <HeatmapGrid cells={heatmapCells} color={accentColor} mc={mc} columns={7} cellSize={16} gap={4} />
+          <Text style={st.heatmapCaption}>
+            {totalActivities} scheduled {totalActivities === 1 ? 'activity' : 'activities'} across {activeDaysCount} {activeDaysCount === 1 ? 'day' : 'days'} this month
+          </Text>
         </View>
 
       </ScrollView>
@@ -731,21 +755,25 @@ function DayViewModal({ iso, blocks, selType, onClose, onSaveBlocks }) {
             opacity: emailStatus === 'sending' ? 0.5 : 1,
           }}
         >
-          <Text style={{ color: emailStatus === 'sent' ? '#4CAF7C' : emailStatus === 'error' ? '#CF6679' : mc.text2, fontSize: 11, fontFamily: F.mono, letterSpacing: 1 }}>
-            {emailStatus === 'sending' ? '…' : emailStatus === 'sent' ? '✓ sent' : emailStatus === 'error' ? '✗ err' : '✉'}
+          <Text style={{ color: emailStatus === 'sent' ? '#4CAF7C' : emailStatus === 'error' ? '#CF6679' : mc.text2, fontSize: 10, fontFamily: F.mono, letterSpacing: 1.5 }}>
+            {emailStatus === 'sending' ? '…' : emailStatus === 'sent' ? 'SENT' : emailStatus === 'error' ? 'ERR' : 'EMAIL'}
           </Text>
         </TouchableOpacity>
-        {/* + Add block button — always visible */}
+        {/* + Add block button */}
         {!isRest && (
           <TouchableOpacity
             onPress={() => { setPendingBlock({ startH: 9, endH: 10, name: '' }); setTimeout(() => { if (pendingRef.current) pendingRef.current.focus(); }, 80); }}
-            style={{ paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: accentColor, marginRight: 10, justifyContent: 'center' }}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: accentColor, marginRight: 10, justifyContent: 'center', alignItems: 'center' }}
           >
-            <Text style={{ color: accentColor, fontSize: 18, lineHeight: 22, fontWeight: '300' }}>+</Text>
+            <Svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth={2.2} strokeLinecap="round">
+              <Path d="M12 5v14M5 12h14" />
+            </Svg>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={onClose} style={{ paddingLeft: 4 }}>
-          <Text style={{ color: mc.text3, fontSize: 18, lineHeight: 22 }}>✕</Text>
+        <TouchableOpacity onPress={onClose} style={{ paddingLeft: 8, paddingRight: 4, paddingVertical: 6 }}>
+          <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={mc.text3} strokeWidth={1.8} strokeLinecap="round">
+            <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+          </Svg>
         </TouchableOpacity>
       </View>
       {/* Email feedback bar */}
@@ -841,8 +869,10 @@ function DayViewModal({ iso, blocks, selType, onClose, onSaveBlocks }) {
                 <Text style={{ fontFamily: F.mono, fontSize: 9, color: `${accentColor}88`, marginTop: 4 }}>
                   {fmtTimeH(pendingBlock.startH)} – {fmtTimeH(pendingBlock.endH)} · Enter to save
                 </Text>
-                <TouchableOpacity onPress={() => setPendingBlock(null)} style={{ position: 'absolute', top: 4, right: 6 }}>
-                  <Text style={{ color: mc.text3, fontSize: 12, lineHeight: 14 }}>✕</Text>
+                <TouchableOpacity onPress={() => setPendingBlock(null)} style={{ position: 'absolute', top: 6, right: 6, padding: 2 }}>
+                  <Svg width={8} height={8} viewBox="0 0 24 24" fill="none" stroke={mc.text3} strokeWidth={2.5} strokeLinecap="round">
+                    <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+                  </Svg>
                 </TouchableOpacity>
               </View>
             )}
@@ -971,7 +1001,9 @@ function BlockItem({ block, mc, accentColor, onDelete, onChangeName, onBlurName,
         onPress={onDelete}
         onClick={e => e.stopPropagation()}
       >
-        <Text style={{ color: mc.text3, fontSize: 12, lineHeight: 14 }}>✕</Text>
+        <Svg width={8} height={8} viewBox="0 0 24 24" fill="none" stroke={mc.text3} strokeWidth={2.5} strokeLinecap="round">
+          <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+        </Svg>
       </TouchableOpacity>
     </View>
   );
@@ -1243,6 +1275,29 @@ function makeStyles(mc, accentColor, fontSize, borderRadius) {
       fontSize: 9,
       color: mc.text2,
       letterSpacing: 1,
+    },
+
+    /* ── Activity density heatmap ── */
+    heatmapCard: {
+      margin: 16,
+      borderWidth: 1,
+      borderColor: mc.border,
+      padding: 16,
+      backgroundColor: mc.surface,
+    },
+    heatmapLabel: {
+      fontFamily: F.mono,
+      fontSize: 10,
+      color: mc.text3,
+      letterSpacing: 1,
+      marginBottom: 10,
+      textTransform: 'uppercase',
+    },
+    heatmapCaption: {
+      fontFamily: F.mono,
+      fontSize: 9,
+      color: mc.text3,
+      marginTop: 10,
     },
 
     /* ── Toast ── */

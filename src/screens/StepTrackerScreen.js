@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from 'react-native';
-import Svg, { Circle, Path, Text as SvgText, Rect } from 'react-native-svg';
+import Svg, { Circle, Path, Text as SvgText, Rect, Line, Polyline } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { F } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getUser } from '../auth';
+import { watchStatus, watchSyncGoogleFit, watchSyncGarmin, watchData } from '../api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function todayISO() { return new Date().toISOString().slice(0, 10); }
@@ -109,6 +110,109 @@ export default function StepTrackerScreen() {
   const [userHeight, setUserHeight] = useState(170);
   const [userWeight, setUserWeight] = useState(70);
 
+  // ── Watch / API sync state ──
+  const [watchConnected, setWatchConnected] = useState(null); // 'google_fit' | 'garmin' | null
+  const [syncing,        setSyncing]        = useState(false);
+  const [syncMsg,        setSyncMsg]        = useState('');
+  const [watchStepsToday,setWatchStepsToday]= useState(null); // steps from API for today
+
+  const loadWatchStatus = useCallback(async () => {
+    try {
+      const st = await watchStatus();
+      if (st?.google_fit?.connected)  setWatchConnected('google_fit');
+      else if (st?.garmin?.connected) setWatchConnected('garmin');
+      else setWatchConnected(null);
+
+      const today = todayISO();
+      const data  = await watchData(today, today);
+      const entry = (data || []).find(d => d.date === today);
+      if (entry?.steps) setWatchStepsToday(entry.steps);
+    } catch {}
+  }, []);
+
+  async function syncFromWatch() {
+    if (!watchConnected) return;
+    setSyncing(true); setSyncMsg('');
+    try {
+      const fn  = watchConnected === 'google_fit' ? watchSyncGoogleFit : watchSyncGarmin;
+      const res = await fn(7);
+      if (res?.ok) {
+        const today = todayISO();
+        const entry = (res.synced || []).find(d => d.date === today);
+        if (entry?.steps) {
+          setWatchStepsToday(entry.steps);
+          // Merge watch steps as today's total if higher
+          setAllData(prev => {
+            const prevEntry = prev[today] || { total: 0, goal, logs: [] };
+            if (entry.steps > (prevEntry.total || 0)) {
+              const updated = {
+                ...prevEntry,
+                total: entry.steps,
+                logs: [...(prevEntry.logs || []), { time: new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' }), count: entry.steps - (prevEntry.total || 0), note: `synced from ${watchConnected === 'google_fit' ? 'Google Fit' : 'Garmin'}` }],
+              };
+              const newHist = { ...prev, [today]: updated };
+              if (storageKey) AsyncStorage.setItem(storageKey, JSON.stringify({ history: newHist, goal, height: userHeight, weight: userWeight }));
+              return newHist;
+            }
+            return prev;
+          });
+          setSyncMsg(`Synced ${entry.steps.toLocaleString()} steps from ${watchConnected === 'google_fit' ? 'Google Fit' : 'Garmin'}.`);
+        } else {
+          setSyncMsg('Synced — no step data for today yet.');
+        }
+      } else {
+        setSyncMsg(res?.error || 'Sync failed.');
+      }
+    } catch { setSyncMsg('Sync failed. Check your connection.'); }
+    setSyncing(false);
+  }
+
+  // ── Legacy BLE state (kept for reference, UI replaced) ──
+  const deviceRef = useRef(null);
+
+  async function connectWatch() {
+    if (!bleSupported) { setDeviceError('Web Bluetooth isn\'t supported in this browser. Try Chrome or Edge on desktop or Android.'); return; }
+    setDeviceError('');
+    setConnecting(true);
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ['battery_service', 'device_information', 'heart_rate'],
+      });
+      const server = await device.gatt.connect();
+      deviceRef.current = device;
+      setWatchName(device.name || 'Unnamed device');
+      device.addEventListener('gattserverdisconnected', () => {
+        setWatchName(n => n); // keep last-known name shown, but mark disconnected
+        deviceRef.current = null;
+        setBattery(null);
+      });
+      await persist(allData, goal, device.name || 'Unnamed device');
+
+      // Best-effort: read battery level if the device exposes it (proves a live GATT link)
+      try {
+        const batSvc = await server.getPrimaryService('battery_service');
+        const batChar = await batSvc.getCharacteristic('battery_level');
+        const val = await batChar.readValue();
+        setBattery(val.getUint8(0));
+      } catch { setBattery(null); }
+    } catch (e) {
+      if (e?.name !== 'NotFoundError') { // user just cancelled the picker
+        setDeviceError(e?.message || 'Could not connect to that device.');
+      }
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  function disconnectWatch() {
+    try { deviceRef.current?.gatt?.disconnect(); } catch {}
+    deviceRef.current = null;
+    setWatchName(null);
+    setBattery(null);
+    persist(allData, goal, null);
+  }
+
   const today     = todayISO();
   const todayData = allData[today] || { total: 0, goal, logs: [] };
   const steps     = todayData.total;
@@ -135,12 +239,13 @@ export default function StepTrackerScreen() {
         }
       } catch {}
     });
-  }, []);
+    loadWatchStatus();
+  }, [loadWatchStatus]);
 
-  async function persist(newHistory, newGoal) {
+  async function persist(newHistory, newGoal, device = watchName) {
     if (!storageKey) return;
     await AsyncStorage.setItem(storageKey, JSON.stringify({
-      history: newHistory, goal: newGoal, height: userHeight, weight: userWeight,
+      history: newHistory, goal: newGoal, height: userHeight, weight: userWeight, device,
     }));
   }
 
@@ -268,8 +373,40 @@ export default function StepTrackerScreen() {
             <View style={{ alignItems: 'center', marginBottom: 8 }}>
               <StepRing steps={steps} goal={goal} color={pct >= 100 ? '#4CAF7C' : accentColor} />
               <Text style={{ fontFamily: F.mono, fontSize: 12, color: pct >= 100 ? '#4CAF7C' : mc.text3, marginTop: 4 }}>
-                {pct >= 100 ? '🎯 Goal reached!' : `${pct}% of goal`}
+                {pct >= 100 ? 'Goal reached!' : `${pct}% of goal`}
               </Text>
+            </View>
+
+            {/* Watch sync card */}
+            <View style={s.card}>
+              <Text style={s.label}>WATCH SYNC</Text>
+              {watchConnected ? (
+                <View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#4CAF7C' }} />
+                    <Text style={{ fontFamily: F.mono, fontSize: 12, color: mc.text, fontWeight: '700' }}>
+                      {watchConnected === 'google_fit' ? 'Google Fit' : 'Garmin'} connected
+                    </Text>
+                  </View>
+                  {watchStepsToday != null && (
+                    <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, marginBottom: 8 }}>
+                      Today from watch: <Text style={{ color: accentColor, fontWeight: '700' }}>{watchStepsToday.toLocaleString()} steps</Text>
+                    </Text>
+                  )}
+                  {!!syncMsg && (
+                    <Text style={{ fontFamily: F.mono, fontSize: 10, color: accentColor, marginBottom: 8 }}>{syncMsg}</Text>
+                  )}
+                  <TouchableOpacity style={s.setBtn} onPress={syncFromWatch} disabled={syncing}>
+                    <Text style={s.setBtnT}>{syncing ? 'SYNCING…' : 'SYNC FROM WATCH'}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View>
+                  <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, marginBottom: 10, lineHeight: 16 }}>
+                    Connect Google Fit or Garmin in Watch Connect (Health section) to auto-sync your steps.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Stats row */}
@@ -289,7 +426,7 @@ export default function StepTrackerScreen() {
                 </View>
                 <View style={s.statBox}>
                   <Text style={[s.statVal, { color: '#FFB74D' }]}>{streak}</Text>
-                  <Text style={s.statLbl}>DAY STREAK 🔥</Text>
+                  <Text style={s.statLbl}>DAY STREAK</Text>
                 </View>
               </View>
             </View>
@@ -478,7 +615,7 @@ export default function StepTrackerScreen() {
               <Text style={s.label}>STREAK</Text>
               <Text style={{ fontFamily: F.mono, fontSize: 48, fontWeight: '700', color: streak > 0 ? '#FFB74D' : mc.text3 }}>{streak}</Text>
               <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>
-                {streak === 0 ? 'Hit your goal today to start a streak.' : streak === 1 ? 'day in a row. Keep going!' : `days in a row 🔥`}
+                {streak === 0 ? 'Hit your goal today to start a streak.' : streak === 1 ? 'day in a row. Keep going!' : `days in a row`}
               </Text>
             </View>
           </>

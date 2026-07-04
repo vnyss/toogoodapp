@@ -156,7 +156,7 @@ function PinRow({ pinId, onComplete }) {
       inp.style.cssText = `
         width:56px;height:68px;background:#161616;
         border:2px solid rgba(201,168,76,0.12);
-        color:#EDE3CE;font-family:'Courier Prime',monospace;font-size:32px;
+        color:#EDE3CE;font-family:'JetBrains Mono',monospace;font-size:32px;
         text-align:center;outline:none;caret-color:transparent;
         -webkit-text-security:disc;text-security:disc;
         transition:border-color 0.15s,box-shadow 0.15s;box-sizing:border-box;

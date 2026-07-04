@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import Svg, { Polyline } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { F } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getUser } from '../auth';
+import { awardXP } from '../api';
 import { PROGRAMS, GUIDED_WORKOUTS } from '../data/guidedWorkouts';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -13,7 +15,57 @@ const DIFF_COLORS = { Beginner: '#4CAF7C', Intermediate: '#FFB74D', Advanced: '#
 function todayDOW() { return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]; }
 function weekNum()  { const d = new Date(); return Math.ceil((d - new Date(d.getFullYear(),0,1)) / 604800000); }
 
-function ProgramCard({ prog, active, onPress, onStart }) {
+function isoFor(date) { return date.toISOString().slice(0, 10); }
+function mondayOfThisWeek() {
+  const d = new Date();
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Writes the chosen program's weekly schedule onto CalendarScreen's per-date
+// block storage (tg_cal_blocks_<user>_<iso>), tagging each block with the
+// program's id so it can be cleanly removed again if the program is cancelled.
+async function syncProgramToCalendar(username, prog) {
+  const monday = mondayOfThisWeek();
+  const touchedDates = [];
+  for (const wk of prog.schedule) {
+    for (const d of wk.days) {
+      const offset = (wk.week - 1) * 7 + DAYS.indexOf(d.day);
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + offset);
+      const iso = isoFor(date);
+      const key = `tg_cal_blocks_${username}_${iso}`;
+      const raw = await AsyncStorage.getItem(key);
+      const existing = raw ? JSON.parse(raw) : [];
+      const withoutThisProgram = existing.filter(b => b.programId !== prog.id);
+      let updated = withoutThisProgram;
+      if (!d.rest) {
+        const wo = d.workoutId ? GUIDED_WORKOUTS.find(w => w.id === d.workoutId) : null;
+        const startH = 7;
+        const endH = startH + (wo?.duration ? wo.duration / 60 : 1);
+        updated = [...withoutThisProgram, { id: `prog_${prog.id}_w${wk.week}_${d.day}`, programId: prog.id, startH, endH, name: d.label || wo?.name || 'Workout' }];
+      }
+      if (updated.length) await AsyncStorage.setItem(key, JSON.stringify(updated));
+      else await AsyncStorage.removeItem(key);
+      touchedDates.push(iso);
+    }
+  }
+  return touchedDates;
+}
+
+async function removeProgramFromCalendar(username, prog, dates) {
+  for (const iso of dates) {
+    const key = `tg_cal_blocks_${username}_${iso}`;
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) continue;
+    const filtered = JSON.parse(raw).filter(b => b.programId !== prog.id);
+    if (filtered.length) await AsyncStorage.setItem(key, JSON.stringify(filtered));
+    else await AsyncStorage.removeItem(key);
+  }
+}
+
+function ProgramCard({ prog, active, onPress, onStart, onCancel }) {
   const { mc, accentColor } = useTheme();
   const gc = GOAL_COLORS[prog.goal] || accentColor;
   const dc = DIFF_COLORS[prog.difficulty] || mc.text3;
@@ -33,11 +85,16 @@ function ProgramCard({ prog, active, onPress, onStart }) {
       <Text style={{ fontFamily: F.mono, fontSize: 14, color: mc.text, marginBottom: 6 }}>{prog.name}</Text>
       <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, marginBottom: 10 }}>{prog.description}</Text>
       <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, marginBottom: 12 }}>{prog.weeks} weeks · {prog.schedule[0].days.filter(d => !d.rest).length} days/week</Text>
-      {!active && (
-        <TouchableOpacity onPress={e => { e.stopPropagation?.(); onStart(); }} style={{ backgroundColor: accentColor, paddingVertical: 12, alignItems: 'center' }}>
-          <Text style={{ fontFamily: F.mono, fontSize: 11, color: '#0A0A0A', fontWeight: '700' }}>START PROGRAM</Text>
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        onPress={e => { e.stopPropagation?.(); active ? onCancel() : onStart(); }}
+        style={active
+          ? { borderWidth: 1, borderColor: '#E57373', paddingVertical: 12, alignItems: 'center' }
+          : { backgroundColor: accentColor, paddingVertical: 12, alignItems: 'center' }}
+      >
+        <Text style={{ fontFamily: F.mono, fontSize: 11, fontWeight: '700', color: active ? '#E57373' : '#0A0A0A' }}>
+          {active ? 'CANCEL PROGRAM' : 'START PROGRAM'}
+        </Text>
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 }
@@ -78,7 +135,7 @@ function TrainingPlanTab({ storageKey }) {
       <View>
         <Text style={[s.label, { marginBottom: 8 }]}>ASSIGN WORKOUT FOR {picking}</Text>
         <TouchableOpacity onPress={() => assignDay(picking, null)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: mc.border }}>
-          <Text style={{ fontFamily: F.mono, fontSize: 12, color: '#E57373' }}>🛌  Rest Day</Text>
+          <Text style={{ fontFamily: F.mono, fontSize: 12, color: '#E57373' }}>Rest Day</Text>
         </TouchableOpacity>
         {GUIDED_WORKOUTS.map(w => (
           <TouchableOpacity key={w.id} onPress={() => assignDay(picking, w)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: mc.border }}>
@@ -127,28 +184,54 @@ export default function WorkoutProgramsScreen() {
   const { mc, accentColor } = useTheme();
   const [activeTab,  setActiveTab]  = useState('programs');
   const [detail,     setDetail]     = useState(null);
-  const [activeId,   setActiveId]   = useState(null);
+  const [activeIds,  setActiveIds]  = useState([]);
   const [progress,   setProgress]   = useState({});
   const [storageKey, setStorageKey] = useState(null);
+  const [username,   setUsername]   = useState(null);
+  const [toast,      setToast]      = useState('');
+  const toastTimer = useRef(null);
+
+  function flashToast(text) {
+    setToast(text);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 2600);
+  }
 
   useEffect(() => {
     getUser().then(async u => {
+      setUsername(u);
       const key = `tg_programs_${u}`;
       setStorageKey(key);
       const raw = await AsyncStorage.getItem(key);
       if (raw) {
         const d = JSON.parse(raw);
-        setActiveId(d.activeId || null);
+        setActiveIds(d.activeIds || (d.activeId ? [d.activeId] : []));
         setProgress(d.progress || {});
       }
     });
   }, []);
 
   async function startProgram(prog) {
-    const updated = { activeId: prog.id, progress: { [prog.id]: { week: 1, completedDays: [] } } };
-    setActiveId(prog.id);
-    setProgress(updated.progress);
-    if (storageKey) await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
+    if (activeIds.includes(prog.id)) return;
+    const dates = username ? await syncProgramToCalendar(username, prog) : [];
+    const newIds = [...activeIds, prog.id];
+    const newProgress = { ...progress, [prog.id]: { week: 1, completedDays: [], calDates: dates } };
+    setActiveIds(newIds);
+    setProgress(newProgress);
+    if (storageKey) await AsyncStorage.setItem(storageKey, JSON.stringify({ activeIds: newIds, progress: newProgress }));
+    flashToast(`Calendar auto-updated — ${prog.name} scheduled`);
+  }
+
+  async function cancelProgram(prog) {
+    const newIds = activeIds.filter(id => id !== prog.id);
+    const calDates = progress[prog.id]?.calDates || [];
+    if (username) await removeProgramFromCalendar(username, prog, calDates);
+    const newProgress = { ...progress };
+    delete newProgress[prog.id];
+    setActiveIds(newIds);
+    setProgress(newProgress);
+    if (storageKey) await AsyncStorage.setItem(storageKey, JSON.stringify({ activeIds: newIds, progress: newProgress }));
+    flashToast(`${prog.name} cancelled — calendar updated`);
   }
 
   async function markDayComplete(progId, week, day) {
@@ -157,7 +240,30 @@ export default function WorkoutProgramsScreen() {
     if (prog.completedDays.includes(key)) return;
     const updated = { ...progress, [progId]: { ...prog, completedDays: [...prog.completedDays, key] } };
     setProgress(updated);
-    if (storageKey) await AsyncStorage.setItem(storageKey, JSON.stringify({ activeId, progress: updated }));
+    if (storageKey) await AsyncStorage.setItem(storageKey, JSON.stringify({ activeIds, progress: updated }));
+    awardXP('exercise').catch(() => {});
+
+    // Auto-write to daily log so the workout shows in LogScreen & Dashboard
+    try {
+      const programData = PROGRAMS.find(p => p.id === progId);
+      const weekSchedule = programData?.schedule?.[Math.min(week - 1, (programData.schedule?.length || 1) - 1)];
+      const dayData = weekSchedule?.days?.find(d => d.day === day);
+      const wo = dayData?.workoutId ? GUIDED_WORKOUTS.find(w => w.id === dayData.workoutId) : null;
+      const woName = wo?.name || dayData?.name || programData?.name || 'Workout';
+      const duration = wo?.duration || 45;
+      const estBurn = Math.round(duration * 7.5);
+      const todayISO = new Date().toISOString().slice(0, 10);
+      const logKey = `toogood_daily_logs_${username}`;
+      const raw = await AsyncStorage.getItem(logKey);
+      const logs = raw ? JSON.parse(raw) : [];
+      const idx = logs.findIndex(l => l.date === todayISO);
+      const entry = idx >= 0 ? { ...logs[idx] } : { date: todayISO, foods: [], calories: 0, protein: 0, carbs: 0, fat: 0 };
+      entry.workout = entry.workout ? `${entry.workout}; ${woName}` : `${woName} (${duration} min · ~${estBurn} kcal burned)`;
+      if (idx >= 0) logs[idx] = entry; else logs.unshift(entry);
+      await AsyncStorage.setItem(logKey, JSON.stringify(logs));
+    } catch {}
+
+    flashToast('Workout done — log updated & XP awarded!');
   }
 
   const s = StyleSheet.create({
@@ -174,16 +280,26 @@ export default function WorkoutProgramsScreen() {
     backTxt: { fontFamily: F.mono, fontSize: 12, color: accentColor },
     label:   { fontFamily: F.mono, fontSize: 10, color: mc.text3, letterSpacing: 1, marginBottom: 10 },
     card:    { borderWidth: 1, borderColor: mc.border, padding: 14, marginBottom: 10 },
+    toastWrap: { position: 'absolute', bottom: 24, left: 0, right: 0, alignItems: 'center' },
+    toastPill: { backgroundColor: accentColor, paddingHorizontal: 16, paddingVertical: 10 },
+    toastTxt:  { fontFamily: F.mono, fontSize: 11, color: '#0A0A0A', fontWeight: '700' },
   });
+
+  const toastEl = toast ? (
+    <View style={s.toastWrap} pointerEvents="none">
+      <View style={s.toastPill}><Text style={s.toastTxt}>{toast}</Text></View>
+    </View>
+  ) : null;
 
   // DETAIL VIEW
   if (detail) {
     const prog = PROGRAMS.find(p => p.id === detail);
-    const isActive = activeId === prog.id;
+    const isActive = activeIds.includes(prog.id);
     const progState = progress[prog.id] || { week: 1, completedDays: [] };
     const currentWeek = prog.schedule[Math.min(progState.week - 1, prog.schedule.length - 1)];
 
     return (
+      <View style={{ flex: 1 }}>
       <ScrollView style={s.root}>
         <View style={s.content}>
           <TouchableOpacity style={s.backBtn} onPress={() => setDetail(null)}>
@@ -213,7 +329,7 @@ export default function WorkoutProgramsScreen() {
                     {!d.rest && (
                       <TouchableOpacity onPress={() => markDayComplete(prog.id, progState.week, d.day)}
                         style={{ width: 28, height: 28, borderWidth: 1, borderColor: done ? accentColor : mc.border, backgroundColor: done ? accentColor : 'transparent', alignItems: 'center', justifyContent: 'center', borderRadius: 14 }}>
-                        {done && <Text style={{ fontFamily: F.mono, fontSize: 12, color: '#0A0A0A' }}>✓</Text>}
+                        {done && <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth={2.8} strokeLinecap="round"><Polyline points="20 6 9 17 4 12" /></Svg>}
                       </TouchableOpacity>
                     )}
                   </View>
@@ -241,17 +357,25 @@ export default function WorkoutProgramsScreen() {
             </View>
           ))}
 
-          {!isActive && (
-            <TouchableOpacity style={{ backgroundColor: accentColor, paddingVertical: 16, alignItems: 'center', marginTop: 8 }} onPress={() => startProgram(prog)}>
-              <Text style={{ fontFamily: F.mono, fontSize: 12, color: '#0A0A0A', fontWeight: '700' }}>START THIS PROGRAM</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={isActive
+              ? { borderWidth: 1, borderColor: '#E57373', paddingVertical: 16, alignItems: 'center', marginTop: 8 }
+              : { backgroundColor: accentColor, paddingVertical: 16, alignItems: 'center', marginTop: 8 }}
+            onPress={() => isActive ? cancelProgram(prog) : startProgram(prog)}
+          >
+            <Text style={{ fontFamily: F.mono, fontSize: 12, fontWeight: '700', color: isActive ? '#E57373' : '#0A0A0A' }}>
+              {isActive ? 'CANCEL THIS PROGRAM' : 'START THIS PROGRAM'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
+      {toastEl}
+      </View>
     );
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={s.root}>
       <View style={s.content}>
         <Text style={s.title}>Programs & Plans</Text>
@@ -269,9 +393,10 @@ export default function WorkoutProgramsScreen() {
           <ProgramCard
             key={prog.id}
             prog={prog}
-            active={activeId === prog.id}
+            active={activeIds.includes(prog.id)}
             onPress={() => setDetail(prog.id)}
             onStart={() => startProgram(prog)}
+            onCancel={() => cancelProgram(prog)}
           />
         ))}
 
@@ -280,5 +405,7 @@ export default function WorkoutProgramsScreen() {
         )}
       </View>
     </ScrollView>
+    {toastEl}
+    </View>
   );
 }

@@ -17,10 +17,44 @@ const ACCENT_NAME = {
   gold:'Gold', red:'Red', green:'Green', blue:'Blue', purple:'Purple', orange:'Orange', pink:'Pink', teal:'Teal',
 };
 
+function csvCell(v) {
+  const s = v == null ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadCSV(filename, header, rows) {
+  if (typeof document === 'undefined') return;
+  const csv = [header, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Module-scope (not redefined every SettingsScreen render) so TextInput keeps
+// focus across keystrokes — a component defined inside a render function gets
+// a fresh identity each render, which forces React to remount the input.
+function Lbl({ children }) {
+  return <Text style={{ fontFamily: F.mono, fontSize: 10, color: C.text3, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 6 }}>{children}</Text>;
+}
+function Inp({ value, onChange, placeholder, secure, keyboard }) {
+  const { fontSize } = useTheme();
+  return (
+    <TextInput
+      style={{ backgroundColor: 'transparent', borderBottomWidth: 1, borderBottomColor: 'rgba(201,168,76,0.22)', color: C.text, fontFamily: F.mono, fontSize, paddingVertical: 8, marginBottom: 4, outlineWidth: 0 }}
+      value={value} onChangeText={onChange}
+      placeholder={placeholder || ''} placeholderTextColor={C.text3}
+      secureTextEntry={!!secure} keyboardType={keyboard || 'default'}
+    />
+  );
+}
+
 function applyDomExtras(fontSize, corner, density) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  root.style.setProperty('--fs',      { sm:'12px', md:'14px', lg:'16px' }[fontSize] || '14px');
+  root.style.setProperty('--fs',      { xs:'10px', sm:'12px', md:'14px', lg:'16px', xl:'18px' }[fontSize] || '14px');
   root.style.setProperty('--radius',  { sharp:'0px', soft:'6px', rounded:'14px' }[corner] || '6px');
   root.style.setProperty('--msg-gap', { compact:'10px', comfortable:'18px', spacious:'28px' }[density] || '18px');
 }
@@ -55,6 +89,7 @@ const NAV_SECTIONS = [
   { id: 'food',        label: 'Food Preferences',  group: 'Preferences' },
   { id: 'exercise',    label: 'Exercise Schedule', group: 'Fitness' },
   { id: 'account',     label: 'Account & Security',group: 'Account' },
+  { id: 'data',        label: 'Export Data',       group: 'Account' },
   { id: 'chats',       label: 'Hidden Chats',      group: 'Account' },
   { id: 'voice',       label: 'Coach Voice',       group: 'Coach' },
 ];
@@ -67,13 +102,43 @@ export default function SettingsScreen({ navigation }) {
   const [username,      setUsername]        = useState('');
   // Appearance — local state mirrors ThemeContext (for segment-control highlighting)
   const [appMode,       setAppMode]         = useState(ctxMode || 'dark');
-  const [appFontSize,   setAppFontSize]     = useState(() => { if (fontSize === 12) return 'sm'; if (fontSize === 16) return 'lg'; return 'md'; });
+  const [appFontSize,   setAppFontSize]     = useState(() => { if (fontSize === 10) return 'xs'; if (fontSize === 12) return 'sm'; if (fontSize === 16) return 'lg'; if (fontSize === 18) return 'xl'; return 'md'; });
   const [appCorner,     setAppCorner]       = useState(() => { if (borderRadius === 0) return 'sharp'; if (borderRadius === 14) return 'rounded'; return 'soft'; });
   const [appDensity,    setAppDensity]      = useState('comfortable'); // 'compact' | 'comfortable' | 'spacious'
   const [appSidebar,    setAppSidebar]      = useState('normal'); // 'narrow' | 'normal' | 'wide'
   const [appAnim,       setAppAnim]         = useState('normal'); // 'none' | 'normal' | 'snappy'
-  const [appAccent,     setAppAccent]       = useState(ctxAccent || 'gold');
+  const [appAccent,     setAppAccent]       = useState(ctxAccent || 'green');
   const [appWeather,    setAppWeather]      = useState(ctxWeather !== false);
+  const [appearanceDirty, setAppearanceDirty] = useState(false);
+  // Context is the source of truth for mode/accent/fontSize/borderRadius/weather (loads
+  // asynchronously per-username from AsyncStorage). Keep local preview state in sync with it
+  // so Settings doesn't get stuck showing the pre-load defaults while other screens are correct.
+  useEffect(() => {
+    setAppMode(ctxMode || 'dark');
+    setAppAccent(ctxAccent || 'green');
+    setAppFontSize(fontSize === 10 ? 'xs' : fontSize === 12 ? 'sm' : fontSize === 16 ? 'lg' : fontSize === 18 ? 'xl' : 'md');
+    setAppCorner(borderRadius === 0 ? 'sharp' : borderRadius === 14 ? 'rounded' : 'soft');
+    setAppWeather(ctxWeather !== false);
+    setAppearanceDirty(false);
+  }, [ctxMode, ctxAccent, fontSize, borderRadius, ctxWeather]);
+
+  // Expose the dirty flag so App.js can block navigating away from Settings entirely
+  // (e.g. clicking a different item in the sidebar) while there are unsaved appearance changes.
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.__tgAppearanceDirty = appearanceDirty;
+    return () => { if (typeof window !== 'undefined') window.__tgAppearanceDirty = false; };
+  }, [appearanceDirty]);
+
+  function confirmDiscardAppearance() {
+    if (typeof window === 'undefined' || !window.confirm) return true;
+    return window.confirm('Please save changes. Otherwise, no changes will be saved.\n\nLeave without saving?');
+  }
+
+  function goToSection(id) {
+    if (id === activeSection) return;
+    if (activeSection === 'appearance' && appearanceDirty && !confirmDiscardAppearance()) return;
+    setActiveSection(id);
+  }
   // Profile
   const [name,         setName]         = useState('');
   const [country,      setCountry]      = useState('');
@@ -111,6 +176,14 @@ export default function SettingsScreen({ navigation }) {
   const [msg,          setMsg]          = useState('');
   const [pwMsg,        setPwMsg]        = useState('');
   const [loading,      setLoading]      = useState(false);
+  const [toast,        setToast]        = useState('');
+  const toastTimer = React.useRef(null);
+  function flashToast(text) {
+    setToast(text);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 2200);
+  }
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
   const [deleteModal,  setDeleteModal]  = useState(false);
   // Family Role
   const [familyRole,   setFamilyRole]   = useState('');
@@ -167,29 +240,20 @@ export default function SettingsScreen({ navigation }) {
   }
 
   async function loadAppearance() {
+    // mode/accent/fontsize/corner/weather are owned by ThemeContext (per-username-scoped
+    // AsyncStorage keys) and synced in via the effect above — only density/sidebar/anim
+    // live outside the context and need to be loaded directly here.
     try {
-      const [mode, fs, corner, density, sw, anim, accent] = await Promise.all([
-        AsyncStorage.getItem('tg_mode'),
-        AsyncStorage.getItem('tg_fontsize'),
-        AsyncStorage.getItem('tg_corner'),
+      const [density, sw, anim] = await Promise.all([
         AsyncStorage.getItem('tg_density'),
         AsyncStorage.getItem('tg_sw'),
         AsyncStorage.getItem('tg_anim'),
-        AsyncStorage.getItem('tg_accent'),
       ]);
-      const finalMode    = mode    || 'dark';
-      const finalFs      = fs      || 'md';
-      const finalCorner  = corner  || 'soft';
       const finalDensity = density || 'comfortable';
-      const finalAccent  = accent  || 'gold';
-      if (mode)    setAppMode(finalMode);
-      if (fs)      setAppFontSize(finalFs);
-      if (corner)  setAppCorner(finalCorner);
       if (density) setAppDensity(finalDensity);
       if (sw)      setAppSidebar(sw);
       if (anim)    setAppAnim(anim);
-      if (accent)  setAppAccent(finalAccent);
-      applyDomExtras(finalFs, finalCorner, finalDensity);
+      applyDomExtras(appFontSize, appCorner, finalDensity);
     } catch {}
   }
 
@@ -239,9 +303,19 @@ export default function SettingsScreen({ navigation }) {
         setCountry(d.country || '');
         setAge(d.age ? String(d.age) : '');
         setGender(d.gender || '');
-        setWeight(d.weight_kg ? String(d.weight_kg) : (d.weight ? String(d.weight) : ''));
-        setHeight(d.height_cm ? String(d.height_cm) : (d.height ? String(d.height) : ''));
-        setTargetWeight(d.target_weight_kg ? String(d.target_weight_kg) : '');
+        const wkg = d.weight_kg || d.weight || null;
+        const hcm = d.height_cm || d.height || null;
+        const tkg = d.target_weight_kg || null;
+        setWeight(wkg ? String(wkg) : '');
+        setHeight(hcm ? String(hcm) : '');
+        setTargetWeight(tkg ? String(tkg) : '');
+        if (wkg) setWeightLbs(String(Math.round(wkg * 2.20462 * 10) / 10));
+        if (tkg) setTargetLbs(String(Math.round(tkg * 2.20462 * 10) / 10));
+        if (hcm) {
+          const totalIn = hcm / 2.54;
+          setHeightFt(String(Math.floor(totalIn / 12)));
+          setHeightIn(String(Math.round(totalIn % 12)));
+        }
         setGoal(d.goal || '');
         setActivity(d.activity_level || '');
         setMobility(d.mobility_note || '');
@@ -281,7 +355,8 @@ export default function SettingsScreen({ navigation }) {
         food_prefs: foodPrefs.join(','),
         family_role: familyRole || undefined,
       });
-      setMsg(r?.ok ? 'Profile saved.' : (r?.error || 'Error saving profile.'));
+      if (r?.ok) { setMsg('Profile saved.'); flashToast('Data saved'); await loadProfile(); }
+      else setMsg(r?.error || 'Error saving profile.');
     } catch { setMsg('Could not reach server.'); }
     setLoading(false);
   }
@@ -290,7 +365,8 @@ export default function SettingsScreen({ navigation }) {
     setMsg(''); setLoading(true);
     try {
       const r = await changeEmail({ email: newEmail });
-      setMsg(r?.ok ? 'Email updated.' : (r?.error || 'Error.'));
+      if (r?.ok) { setMsg('Email updated.'); flashToast('Data saved'); }
+      else setMsg(r?.error || 'Error.');
     } catch { setMsg('Could not reach server.'); }
     setLoading(false);
   }
@@ -307,7 +383,7 @@ export default function SettingsScreen({ navigation }) {
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
       }).then(x => x.json());
-      if (r?.ok) { setPwMsg('Password updated.'); setOldPwd(''); setNewPwd(''); setConfirmPwd(''); }
+      if (r?.ok) { setPwMsg('Password updated.'); flashToast('Data saved'); setOldPwd(''); setNewPwd(''); setConfirmPwd(''); }
       else setPwMsg(r?.error || 'Error changing password.');
     } catch { setPwMsg('Could not reach server.'); }
     setLoading(false);
@@ -347,7 +423,7 @@ export default function SettingsScreen({ navigation }) {
           fitness_level: fitnessLevel,
         }),
       });
-      setMsg('Exercise preferences saved.');
+      setMsg('Exercise preferences saved.'); flashToast('Data saved');
     } catch { setMsg('Could not reach server.'); }
     setLoading(false);
   }
@@ -357,19 +433,36 @@ export default function SettingsScreen({ navigation }) {
     if (navigation?.replace) navigation.replace('login');
   }
 
-  function toggleFood(tag) {
-    setFoodPrefs(p => p.includes(tag) ? p.filter(t => t !== tag) : [...p, tag]);
+  async function loadLogs() {
+    const u = await getUser();
+    const raw = await AsyncStorage.getItem(`toogood_daily_logs_${u}`);
+    return raw ? JSON.parse(raw) : [];
   }
 
-  function Lbl({ children }) {
-    return <Text style={st.label}>{children}</Text>;
+  async function exportDailySummaryCSV() {
+    const logs = await loadLogs();
+    const header = ['Date', 'Weight (kg)', 'Steps', 'Workout', 'Calories', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Hunger', 'Energy'];
+    const rows = [...logs].sort((a, b) => a.date.localeCompare(b.date))
+      .map(l => [l.date, l.weight || '', l.steps || '', l.workout || '', l.calories || 0, l.protein || 0, l.carbs || 0, l.fat || 0, l.hunger ?? '', l.energy ?? '']);
+    downloadCSV(`toogood-daily-summary-${today()}.csv`, header, rows);
   }
-  function Inp({ value, onChange, placeholder, secure, keyboard }) {
-    return (
-      <TextInput style={st.input} value={value} onChangeText={onChange}
-        placeholder={placeholder || ''} placeholderTextColor={C.text3}
-        secureTextEntry={!!secure} keyboardType={keyboard || 'default'} />
-    );
+
+  async function exportFoodLogCSV() {
+    const logs = await loadLogs();
+    const header = ['Date', 'Food', 'Serving', 'Calories', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Fiber (g)', 'Sugar (g)', 'Sodium (mg)', 'Alcohol (g)'];
+    const rows = [];
+    [...logs].sort((a, b) => a.date.localeCompare(b.date)).forEach(l => {
+      (l.foods || []).forEach(f => {
+        rows.push([l.date, f.name || '', f.serving || '', f.calories || 0, f.protein || 0, f.carbs || 0, f.fat || 0, f.fiber || '', f.sugar || '', f.sodium || '', f.alcohol || '']);
+      });
+    });
+    downloadCSV(`toogood-food-log-${today()}.csv`, header, rows);
+  }
+
+  function today() { return new Date().toISOString().slice(0, 10); }
+
+  function toggleFood(tag) {
+    setFoodPrefs(p => p.includes(tag) ? p.filter(t => t !== tag) : [...p, tag]);
   }
 
   // Dynamic accent + mode — changes the whole page live
@@ -464,7 +557,7 @@ export default function SettingsScreen({ navigation }) {
           <View key={g} style={{ marginBottom: 14 }}>
             <Text style={[st.navGroup, { color: mc.text3 }]}>{g}</Text>
             {NAV_SECTIONS.filter(n => n.group === g).map(n => (
-              <TouchableOpacity key={n.id} style={[st.navItem, activeSection === n.id && dy.navItemA]} onPress={() => setActiveSection(n.id)}>
+              <TouchableOpacity key={n.id} style={[st.navItem, activeSection === n.id && dy.navItemA]} onPress={() => goToSection(n.id)}>
                 <Text style={[st.navItemTxt, { color: mc.text2 }, activeSection === n.id && dy.accentTxt]}>{n.label}</Text>
               </TouchableOpacity>
             ))}
@@ -486,7 +579,7 @@ export default function SettingsScreen({ navigation }) {
         {activeSection === 'appearance' && (
           <View>
             <Text style={[st.sectionTitle, { color: mc.text}]}>Appearance</Text>
-            <Text style={[st.sectionSub, { color: mc.text2 }]}>Changes apply instantly to the whole page.</Text>
+            <Text style={[st.sectionSub, { color: mc.text2 }]}>Preview your changes here, then hit Save to apply them across the whole app.</Text>
 
             {/* Mode */}
             <View style={[st.settingRow, { borderBottomColor: mc.border }]}>
@@ -497,7 +590,7 @@ export default function SettingsScreen({ navigation }) {
               <View style={[st.segControl, { borderColor: mc.border }]}>
                 {['dark', 'light'].map(mod => (
                   <TouchableOpacity key={mod} style={[st.segBtn, { borderRightColor: mc.border }, appMode === mod && dy.segBtnActive]}
-                    onPress={() => { setAppMode(mod); setTheme(mod, undefined); applyDomExtras(appFontSize, appCorner, appDensity); }}>
+                    onPress={() => { setAppMode(mod); setAppearanceDirty(true); applyDomExtras(appFontSize, appCorner, appDensity); }}>
                     <Text style={[st.segBtnTxt, { color: mc.text2 }, appMode === mod && dy.accentTxt]}>{mod === 'dark' ? 'Dark' : 'Light'}</Text>
                   </TouchableOpacity>
                 ))}
@@ -515,7 +608,7 @@ export default function SettingsScreen({ navigation }) {
                   {Object.entries(ACCENT_MAP).map(([key, color]) => (
                     <TouchableOpacity
                       key={key}
-                      onPress={() => { setAppAccent(key); setTheme(undefined, key); applyDomExtras(appFontSize, appCorner, appDensity); }}
+                      onPress={() => { setAppAccent(key); setAppearanceDirty(true); applyDomExtras(appFontSize, appCorner, appDensity); }}
                       style={{
                         width: 28, height: 28, borderRadius: 14, backgroundColor: color,
                         borderWidth: 2, borderColor: appAccent === key ? mc.text : 'transparent',
@@ -532,20 +625,44 @@ export default function SettingsScreen({ navigation }) {
             </View>
 
             {/* Font size */}
-            <View style={[st.settingRow, { borderBottomColor: mc.border }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[st.settingLabel, { color: mc.text }]}>Font size</Text>
-                <Text style={[st.settingDesc, { color: mc.text2 }]}>Base text size across the app.</Text>
-              </View>
-              <View style={[st.segControl, { borderColor: mc.border }]}>
-                {[['sm','Small'],['md','Medium'],['lg','Large']].map(([v, l]) => (
-                  <TouchableOpacity key={v} style={[st.segBtn, { borderRightColor: mc.border }, appFontSize === v && dy.segBtnActive]}
-                    onPress={() => { setAppFontSize(v); setExtras({ fontsize: v }); applyDomExtras(v, appCorner, appDensity); }}>
-                    <Text style={[st.segBtnTxt, { color: mc.text2 }, appFontSize === v && dy.accentTxt]}>{l}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+            {(() => {
+              const FS_KEYS = ['xs','sm','md','lg','xl'];
+              const FS_PX   = { xs:10, sm:12, md:14, lg:16, xl:18 };
+              const fsIdx   = Math.max(0, FS_KEYS.indexOf(appFontSize));
+              const pct     = fsIdx / (FS_KEYS.length - 1);
+              return (
+                <View style={[st.settingRow, { borderBottomColor: mc.border, alignItems: 'flex-start' }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[st.settingLabel, { color: mc.text }]}>Font size</Text>
+                    <Text style={[st.settingDesc, { color: mc.text2 }]}>Base text size across the app.</Text>
+                  </View>
+                  <View style={{ width: 180, gap: 8, paddingTop: 2 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3 }}>A</Text>
+                      {React.createElement('input', {
+                        type: 'range', min: 0, max: 4, step: 1, value: fsIdx,
+                        onChange: (e) => {
+                          const v = FS_KEYS[Number(e.target.value)];
+                          setAppFontSize(v); setAppearanceDirty(true);
+                          applyDomExtras(v, appCorner, appDensity);
+                        },
+                        style: {
+                          flex: 1, cursor: 'pointer', height: 4,
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} ${pct * 100}%, ${mc.border} ${pct * 100}%)`,
+                          outline: 'none', border: 'none',
+                          WebkitAppearance: 'none', appearance: 'none',
+                        },
+                      })}
+                      <Text style={{ fontFamily: F.mono, fontSize: 16, color: mc.text3 }}>A</Text>
+                    </View>
+                    <Text style={{ fontFamily: F.mono, fontSize: 10, color: accentColor, letterSpacing: 1, textAlign: 'center' }}>
+                      {FS_PX[appFontSize] || 14}px
+                    </Text>
+                  </View>
+                </View>
+              );
+            })()}
 
             {/* Corner style */}
             <View style={[st.settingRow, { borderBottomColor: mc.border }]}>
@@ -556,7 +673,7 @@ export default function SettingsScreen({ navigation }) {
               <View style={[st.segControl, { borderColor: mc.border }]}>
                 {[['sharp','Sharp'],['soft','Soft'],['rounded','Rounded']].map(([v, l]) => (
                   <TouchableOpacity key={v} style={[st.segBtn, { borderRightColor: mc.border }, appCorner === v && dy.segBtnActive]}
-                    onPress={() => { setAppCorner(v); setExtras({ corner: v }); applyDomExtras(appFontSize, v, appDensity); }}>
+                    onPress={() => { setAppCorner(v); setAppearanceDirty(true); applyDomExtras(appFontSize, v, appDensity); }}>
                     <Text style={[st.segBtnTxt, { color: mc.text2 }, appCorner === v && dy.accentTxt]}>{l}</Text>
                   </TouchableOpacity>
                 ))}
@@ -612,17 +729,36 @@ export default function SettingsScreen({ navigation }) {
             </View>
 
             {/* Weather effects */}
-            <View style={[st.settingRow, { borderBottomWidth: 0 }]}>
+            <View style={[st.settingRow, { borderBottomColor: mc.border }]}>
               <View style={{ flex: 1 }}>
                 <Text style={[st.settingLabel, { color: mc.text }]}>Weather effects</Text>
                 <Text style={[st.settingDesc, { color: mc.text2 }]}>Animated particles on the dashboard (rain, snow, etc.).</Text>
               </View>
               <TouchableOpacity
                 style={{ paddingVertical: 7, paddingHorizontal: 18, borderWidth: 1, borderColor: appWeather ? accentColor : mc.border, backgroundColor: appWeather ? accentDim : 'transparent' }}
-                onPress={() => { const v = !appWeather; setAppWeather(v); setExtras({ weather: v }); }}
+                onPress={() => { const v = !appWeather; setAppWeather(v); setAppearanceDirty(true); }}
               >
                 <Text style={{ fontFamily: F.mono, fontSize: Math.max(10, fontSize - 2), color: appWeather ? accentColor : mc.text2, letterSpacing: 2, textTransform: 'uppercase' }}>{appWeather ? 'On' : 'Off'}</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Save — preview above is local only; this is what actually applies it app-wide */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 22 }}>
+              <TouchableOpacity
+                disabled={!appearanceDirty}
+                onPress={() => {
+                  setTheme(appMode, appAccent);
+                  setExtras({ fontsize: appFontSize, corner: appCorner, weather: appWeather });
+                  setAppearanceDirty(false);
+                  flashToast('Appearance saved');
+                }}
+                style={{ paddingVertical: 11, paddingHorizontal: 26, backgroundColor: appearanceDirty ? accentColor : mc.border, opacity: appearanceDirty ? 1 : 0.5 }}
+              >
+                <Text style={{ fontFamily: F.mono, fontSize: 12, color: appearanceDirty ? '#0A0A0A' : mc.text2, letterSpacing: 2, textTransform: 'uppercase', fontWeight: '700' }}>Save changes</Text>
+              </TouchableOpacity>
+              {appearanceDirty && (
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text2 }}>Unsaved — leaving this tab will prompt you.</Text>
+              )}
             </View>
           </View>
         )}
@@ -930,6 +1066,30 @@ export default function SettingsScreen({ navigation }) {
           </View>
         )}
 
+        {/* ── Export Data ── */}
+        {activeSection === 'data' && (
+          <View>
+            <Text style={[st.sectionTitle, { color: mc.text }]}>Export Data</Text>
+            <Text style={[st.sectionSub, { color: mc.text2 }]}>Download everything you've logged as a spreadsheet — for your own records or to import elsewhere.</Text>
+
+            <View style={[st.infoRow, { backgroundColor: mc.surface, borderColor: mc.border, marginBottom: 16 }]}>
+              <Text style={{ fontFamily: F.mono, fontSize: fontSize, color: mc.text, marginBottom: 6 }}>Daily Summary</Text>
+              <Text style={[st.settingDesc, { color: mc.text2, maxWidth: '100%', marginBottom: 14 }]}>One row per day: weight, steps, workout, and total calories/macros.</Text>
+              <TouchableOpacity style={[dy.goldBtn, { alignSelf: 'flex-start', marginBottom: 0 }]} onPress={exportDailySummaryCSV}>
+                <Text style={st.goldBtnTxt}>Download CSV</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[st.infoRow, { backgroundColor: mc.surface, borderColor: mc.border }]}>
+              <Text style={{ fontFamily: F.mono, fontSize: fontSize, color: mc.text, marginBottom: 6 }}>Food Log</Text>
+              <Text style={[st.settingDesc, { color: mc.text2, maxWidth: '100%', marginBottom: 14 }]}>One row per food entry across every day you've logged, with full nutrition breakdown.</Text>
+              <TouchableOpacity style={[dy.goldBtn, { alignSelf: 'flex-start', marginBottom: 0 }]} onPress={exportFoodLogCSV}>
+                <Text style={st.goldBtnTxt}>Download CSV</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* ── Hidden Chats ── */}
         {activeSection === 'chats' && (
           <View>
@@ -960,7 +1120,7 @@ export default function SettingsScreen({ navigation }) {
                   <select
                     value={voiceName}
                     onChange={e => { setVoiceName(e.target.value); saveVoiceSetting('tg_voice_name', e.target.value); }}
-                    style={{ width: '100%', background: '#181818', border: '1px solid rgba(201,168,76,0.18)', borderRadius: 4, color: '#E8DCC8', fontFamily: "'Courier Prime', monospace", fontSize: fontSize, padding: '9px 12px', outline: 'none', cursor: 'pointer' }}>
+                    style={{ width: '100%', background: '#181818', border: '1px solid rgba(201,168,76,0.18)', borderRadius: 4, color: '#E8DCC8', fontFamily: F.mono, fontSize: fontSize, padding: '9px 12px', outline: 'none', cursor: 'pointer' }}>
                     <option value="">System default</option>
                     {voiceList.map(v => (
                       <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
@@ -1049,6 +1209,14 @@ export default function SettingsScreen({ navigation }) {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {toast ? (
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 28, alignItems: 'center' }}>
+          <View style={{ backgroundColor: accentColor, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 4 }}>
+            <Text style={{ fontFamily: F.mono, fontSize: 12, fontWeight: '700', letterSpacing: 1.5, color: '#060606', textTransform: 'uppercase' }}>{toast}</Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
-import { login, register, forgotPassword } from '../api';
+import { login, register, sendResetCode, verifyResetCode } from '../api';
 import { saveAuth } from '../auth';
 
-const MONO = "'Courier Prime', monospace";
-const DISPLAY = "'Special Elite', monospace";
+const MONO = "'JetBrains Mono', monospace";
+const DISPLAY = "'Inter', sans-serif";
 const GOLD = '#C9A84C';
-const BG   = '#080808';
-const CARD = '#0F0F0F';
+const BG   = '#000000';
+const CARD = '#0A0A0A';
 const TEXT  = '#E8DCC8';
 const TEXT2 = '#8A7A62';
 const TEXT3 = '#50422E';
@@ -69,21 +69,37 @@ function PasswordField({ value, onChange, placeholder, onSubmit }) {
   );
 }
 
-/* ── Forgot password view ───────────────────────────────────────────────── */
+/* ── Forgot password view — 3-step OTP flow ────────────────────────────── */
 function ForgotPasswordView({ onBack }) {
-  const [email,   setEmail]   = useState('');
-  const [msg,     setMsg]     = useState('');
-  const [error,   setError]   = useState('');
-  const [loading, setLoading] = useState(false);
-  const [sent,    setSent]    = useState(false);
+  const [step,      setStep]     = useState('email');   // 'email' | 'code' | 'done'
+  const [email,     setEmail]    = useState('');
+  const [code,      setCode]     = useState('');
+  const [newPw,     setNewPw]    = useState('');
+  const [confirmPw, setConfirmPw]= useState('');
+  const [error,     setError]    = useState('');
+  const [loading,   setLoading]  = useState(false);
 
-  async function handleSend() {
+  async function handleSendCode() {
     if (!email.trim()) { setError('Enter your registered email address.'); return; }
     setError(''); setLoading(true);
     try {
-      await forgotPassword(email.trim().toLowerCase());
-      setSent(true);
-      setMsg('If that email is registered you will receive a reset link shortly.');
+      await sendResetCode(email.trim().toLowerCase());
+      setStep('code');
+    } catch {
+      setError('Could not reach server. Check your network.');
+    }
+    setLoading(false);
+  }
+
+  async function handleVerify() {
+    if (code.trim().length !== 6) { setError('Enter the 6-digit code from your email.'); return; }
+    if (newPw.length < 8)         { setError('Password must be at least 8 characters.'); return; }
+    if (newPw !== confirmPw)       { setError('Passwords do not match.'); return; }
+    setError(''); setLoading(true);
+    try {
+      const d = await verifyResetCode(email.trim().toLowerCase(), code.trim(), newPw);
+      if (d.ok) { setStep('done'); }
+      else      { setError(d.error || 'Invalid or expired code.'); }
     } catch {
       setError('Could not reach server. Check your network.');
     }
@@ -95,10 +111,10 @@ function ForgotPasswordView({ onBack }) {
       <View style={st.goldAccent} />
       <Text style={st.tag}>ACCOUNT // ACCESS RECOVERY</Text>
       <Text style={st.title}>Reset password</Text>
-      <Text style={st.subtitle}>Enter your registered email and we'll send you a reset link.</Text>
 
-      {!sent ? (
+      {step === 'email' && (
         <>
+          <Text style={st.subtitle}>Enter your registered email — we'll send a 6-digit verification code.</Text>
           <View style={st.fieldGroup}>
             <Text style={st.label}>Email address</Text>
             <TextInput
@@ -110,21 +126,80 @@ function ForgotPasswordView({ onBack }) {
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
-              onSubmitEditing={handleSend}
+              onSubmitEditing={handleSendCode}
             />
           </View>
           {!!error && <Text style={st.error}>{error}</Text>}
-          <TouchableOpacity style={[st.submit, loading && { opacity: 0.6 }]} onPress={handleSend} disabled={loading}>
-            <Text style={st.submitTxt}>{loading ? 'Sending…' : 'Send reset link'}</Text>
+          <TouchableOpacity style={[st.submit, loading && { opacity: 0.6 }]} onPress={handleSendCode} disabled={loading}>
+            <Text style={st.submitTxt}>{loading ? 'Sending…' : 'Send verification code'}</Text>
           </TouchableOpacity>
         </>
-      ) : (
-        <Text style={{ fontFamily: MONO, fontSize: 13, color: '#4CAF7C', lineHeight: 22, marginBottom: 20 }}>{msg}</Text>
       )}
 
-      <TouchableOpacity style={st.switchLink} onPress={onBack}>
-        <Text style={st.switchTxt}><Text style={{ color: GOLD }}>← Back to login</Text></Text>
-      </TouchableOpacity>
+      {step === 'code' && (
+        <>
+          <Text style={st.subtitle}>A 6-digit code was sent to <Text style={{ color: GOLD }}>{email}</Text>. Enter it below along with your new password.</Text>
+          <View style={st.fieldGroup}>
+            <Text style={st.label}>Verification code</Text>
+            <TextInput
+              style={[st.input, { letterSpacing: 8, fontSize: 22, textAlign: 'center' }]}
+              value={code}
+              onChangeText={v => setCode(v.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              placeholderTextColor={TEXT3}
+              keyboardType="number-pad"
+              maxLength={6}
+            />
+          </View>
+          <View style={st.fieldGroup}>
+            <Text style={st.label}>New password</Text>
+            <TextInput
+              style={st.input}
+              value={newPw}
+              onChangeText={setNewPw}
+              placeholder="Min. 8 characters"
+              placeholderTextColor={TEXT3}
+              secureTextEntry
+            />
+          </View>
+          <View style={st.fieldGroup}>
+            <Text style={st.label}>Confirm new password</Text>
+            <TextInput
+              style={st.input}
+              value={confirmPw}
+              onChangeText={setConfirmPw}
+              placeholder="Repeat password"
+              placeholderTextColor={TEXT3}
+              secureTextEntry
+              onSubmitEditing={handleVerify}
+            />
+          </View>
+          {!!error && <Text style={st.error}>{error}</Text>}
+          <TouchableOpacity style={[st.submit, loading && { opacity: 0.6 }]} onPress={handleVerify} disabled={loading}>
+            <Text style={st.submitTxt}>{loading ? 'Verifying…' : 'Reset password'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={st.switchLink} onPress={() => { setStep('email'); setCode(''); setError(''); }}>
+            <Text style={[st.switchTxt, { fontSize: 11, color: TEXT3 }]}>Didn't receive it? <Text style={{ color: GOLD }}>Resend code</Text></Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {step === 'done' && (
+        <>
+          <Text style={{ fontFamily: MONO, fontSize: 13, color: '#4CAF7C', lineHeight: 22, marginBottom: 20 }}>
+            Password updated successfully. You can now log in with your new password.
+          </Text>
+          <TouchableOpacity style={st.submit} onPress={onBack}>
+            <Text style={st.submitTxt}>Back to login</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {step !== 'done' && (
+        <TouchableOpacity style={st.switchLink} onPress={onBack}>
+          <Text style={st.switchTxt}><Text style={{ color: GOLD }}>← Back to login</Text></Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

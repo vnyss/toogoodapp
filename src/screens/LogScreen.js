@@ -6,10 +6,11 @@ import {
 import Svg, { Path, Line } from 'react-native-svg';
 import { C, F } from '../theme';
 import { useTheme } from '../ThemeContext';
-import { aiChat, fetchLogs, syncLogs, awardXP, lookupBarcode, searchFood } from '../api';
+import { aiChat, fetchLogs, syncLogs, awardXP, lookupBarcode, searchFood, foodPhotoExtract } from '../api';
 import BarcodeScanner from '../components/BarcodeScanner';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getToken, getUser } from '../auth';
+import { DonutChart } from '../components/Charts';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -20,6 +21,13 @@ function dateLabel() {
   return d.toLocaleDateString('en', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   }).toUpperCase();
+}
+
+const MICRO_KEYS = ['fiber', 'sugar', 'sodium', 'vitA', 'vitC', 'vitD', 'vitB12', 'iron', 'calcium', 'potassium', 'magnesium', 'zinc'];
+function pickMicros(item) {
+  const out = {};
+  MICRO_KEYS.forEach(k => { if (item[k]) out[k] = item[k]; });
+  return Object.keys(out).length ? out : null;
 }
 
 function emptyEntry() {
@@ -61,18 +69,31 @@ const INDIAN_FOODS = [
   { name: 'Lassi (sweet)',       calories: 78,  protein: 3,   carbs: 12,  fat: 2,   serving: '200ml' },
 ];
 
+// ─── Alcoholic drinks quick-add — alcohol in grams (7 kcal/g) ──────────────
+const DRINKS = [
+  { name: 'Beer (regular, 330ml)',     calories: 150, protein: 1.6, carbs: 13, fat: 0, alcohol: 14, serving: '330ml can' },
+  { name: 'Beer (light, 330ml)',       calories: 103, protein: 0.9, carbs: 6,  fat: 0, alcohol: 11, serving: '330ml can' },
+  { name: 'Wine (red, 150ml)',         calories: 125, protein: 0.1, carbs: 4,  fat: 0, alcohol: 15, serving: '150ml glass' },
+  { name: 'Wine (white, 150ml)',       calories: 121, protein: 0.1, carbs: 3.8,fat: 0, alcohol: 15, serving: '150ml glass' },
+  { name: 'Whiskey / Vodka (shot)',    calories: 97,  protein: 0,   carbs: 0,  fat: 0, alcohol: 14, serving: '44ml shot' },
+  { name: 'Rum (shot)',                calories: 97,  protein: 0,   carbs: 0,  fat: 0, alcohol: 14, serving: '44ml shot' },
+  { name: 'Gin & Tonic',               calories: 150, protein: 0,   carbs: 8,  fat: 0, alcohol: 14, serving: '1 drink' },
+  { name: 'Champagne / Sparkling',     calories: 96,  protein: 0.2, carbs: 2,  fat: 0, alcohol: 12, serving: '120ml glass' },
+  { name: 'Cocktail (sweet, avg)',     calories: 220, protein: 0,   carbs: 22, fat: 0, alcohol: 18, serving: '1 drink' },
+];
+
 const MEAL_TAGS = [
-  { key: 'on_plan', label: '🟢 On Plan', color: '#4CAF7C' },
-  { key: 'treat',   label: '🎉 Treat',   color: '#DAA520' },
-  { key: 'stress',  label: '😰 Stress',  color: '#E57373' },
-  { key: 'mindful', label: '🧘 Mindful', color: '#7C8BF5' },
+  { key: 'on_plan', label: 'On Plan', color: '#4CAF7C' },
+  { key: 'treat',   label: 'Treat',   color: '#DAA520' },
+  { key: 'stress',  label: 'Stress',  color: '#E57373' },
+  { key: 'mindful', label: 'Mindful', color: '#7C8BF5' },
 ];
 
 const MINDFUL_OPTS = [
-  { key: 'great',    emoji: '😊', label: 'Great',    sub: 'Felt good about my choices' },
-  { key: 'ok',       emoji: '😐', label: 'OK',       sub: 'Pretty normal day' },
-  { key: 'struggle', emoji: '😞', label: 'Struggled', sub: 'Hard day with food' },
-  { key: 'offplan',  emoji: '⚡', label: 'Off plan',  sub: 'Didn\'t follow my plan' },
+  { key: 'great',    emoji: '', label: 'Great',    sub: 'Felt good about my choices' },
+  { key: 'ok',       emoji: '', label: 'OK',       sub: 'Pretty normal day' },
+  { key: 'struggle', emoji: '', label: 'Struggled', sub: 'Hard day with food' },
+  { key: 'offplan',  emoji: '', label: 'Off plan',  sub: 'Didn\'t follow my plan' },
 ];
 
 // ─── Mic SVG icon (matches HTML exactly) ───────────────────────────────────
@@ -146,6 +167,10 @@ function WebSlider({ min, max, value, onChange, accentColor: accent = C.gold, bo
 export default function LogScreen({ navigation }) {
   const { mc, accentColor, fontSize, borderRadius } = useTheme();
   const [logKey,      setLogKey]      = useState('');
+  const [logUser,     setLogUser]     = useState('');
+  const [fastToast,   setFastToast]   = useState('');
+  const [calorieTarget, setCalorieTarget] = useState(null);
+  const fastToastTimer = useRef(null);
   const [entry,       setEntry]       = useState(null);
   const [saved,       setSaved]       = useState(false);
   const [hunger,      setHunger]      = useState(5);
@@ -159,6 +184,8 @@ export default function LogScreen({ navigation }) {
   const [afServing,   setAfServing]   = useState('');
   const [afProtein,   setAfProtein]   = useState('');
   const [afCarbs,     setAfCarbs]     = useState('');
+  const [afMicros,    setAfMicros]    = useState(null);
+  const [afAlcohol,   setAfAlcohol]   = useState('');
   const [afSearchQ,   setAfSearchQ]   = useState('');
   const [afResults,   setAfResults]   = useState([]);
   const [afSearching, setAfSearching] = useState(false);
@@ -181,6 +208,13 @@ export default function LogScreen({ navigation }) {
   const photoInputRef  = useRef(null);
   const [pendingPhotoIdx, setPendingPhotoIdx] = useState(null);
 
+  // AI photo food recognition
+  const aiPhotoInputRef = useRef(null);
+  const [aiPhotoLoading, setAiPhotoLoading] = useState(false);
+  const [aiPhotoError,   setAiPhotoError]   = useState('');
+  const [aiPhotoFoods,   setAiPhotoFoods]   = useState([]);
+  const [aiPhotoAdded,   setAiPhotoAdded]   = useState([]);
+
   // AI assistant
   const [asstOpen,    setAsstOpen]    = useState(true);
   const [asstMsgs,    setAsstMsgs]    = useState([{
@@ -198,11 +232,15 @@ export default function LogScreen({ navigation }) {
   // ── Load on mount ───────────────────────────────────────────────────────
   useEffect(() => {
     getUser().then(async u => {
+      setLogUser(u);
       const key = `toogood_daily_logs_${u}`;
       setLogKey(key);
       loadEntry(key);
       const raw = await AsyncStorage.getItem(`toogood_meal_templates_${u}`);
       if (raw) setTemplates(JSON.parse(raw));
+      // Load SmartTargets computed targets for progress display
+      const tRaw = await AsyncStorage.getItem(`tg_computed_targets_${u}`);
+      if (tRaw) setCalorieTarget(JSON.parse(tRaw));
     });
   }, []);
 
@@ -299,13 +337,17 @@ export default function LogScreen({ navigation }) {
   }
 
   // ── Food helpers ─────────────────────────────────────────────────────────
-  const totalCal = (entry?.foods || []).reduce((s, f) => s + (f.calories || 0), 0);
+  const totalCal  = (entry?.foods || []).reduce((s, f) => s + (f.calories || 0), 0);
+  const totalProt = (entry?.foods || []).reduce((s, f) => s + (f.protein || 0), 0);
+  const totalCarb = (entry?.foods || []).reduce((s, f) => s + (f.carbs   || 0), 0);
+  const totalFat  = (entry?.foods || []).reduce((s, f) => s + (f.fat     || 0), 0);
 
   function openAddFood() {
     setAfView('search');
     setAfSearchQ(''); setAfResults([]); setAfSearching(false);
     setAfName(''); setAfCal(''); setAfServing('');
     setAfProtein(''); setAfCarbs(''); setAfTag(null);
+    setAfMicros(null); setAfAlcohol('');
     setShowFood(true);
   }
 
@@ -313,6 +355,54 @@ export default function LogScreen({ navigation }) {
     if (Platform.OS !== 'web') return;
     setPendingPhotoIdx(idx);
     photoInputRef.current?.click();
+  }
+
+  function openPhotoRecognition() {
+    if (Platform.OS !== 'web') return;
+    setAiPhotoError(''); setAiPhotoFoods([]); setAiPhotoAdded([]);
+    setAfView('photo');
+    setShowFood(true);
+    aiPhotoInputRef.current?.click();
+  }
+
+  function handleAiPhotoCapture(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setAiPhotoLoading(true);
+    setAiPhotoError('');
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      const dataUrl = ev.target.result;
+      const [, mime, b64] = dataUrl.match(/^data:(.+);base64,(.+)$/) || [];
+      try {
+        const d = await foodPhotoExtract({ image_b64: b64, image_mime: mime || file.type || 'image/jpeg' });
+        if (d?.ok && d.foods?.length) {
+          setAiPhotoFoods(d.foods);
+        } else {
+          setAiPhotoError(d?.error || "Couldn't identify any food in that photo — try a clearer shot or add it manually.");
+        }
+      } catch {
+        setAiPhotoError('Could not reach the image analysis service.');
+      }
+      setAiPhotoLoading(false);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function addDetectedFood(item, idx) {
+    const food = { name: item.name, serving: item.serving, calories: item.calories || 0, protein: item.protein || 0, carbs: item.carbs || 0, fat: item.fat || 0, tag: null, photo: null };
+    setEntry(e => {
+      const foods = [...(e.foods || []), food];
+      return {
+        ...e, foods,
+        calories: foods.reduce((s, f) => s + (f.calories || 0), 0),
+        protein:  foods.reduce((s, f) => s + (f.protein  || 0), 0),
+        carbs:    foods.reduce((s, f) => s + (f.carbs    || 0), 0),
+      };
+    });
+    awardXP('food_log').catch(() => {});
+    setAiPhotoAdded(a => [...a, idx]);
   }
 
   function handlePhotoCapture(e) {
@@ -354,6 +444,8 @@ export default function LogScreen({ navigation }) {
     setAfServing(item.serving);
     setAfProtein(String(item.protein));
     setAfCarbs(String(item.carbs));
+    setAfMicros(pickMicros(item));
+    setAfAlcohol(item.alcohol ? String(item.alcohol) : '');
     setAfView('manual');
   }
 
@@ -400,13 +492,53 @@ export default function LogScreen({ navigation }) {
       setAfServing(p.serving);
       setAfProtein(String(p.protein));
       setAfCarbs(String(p.carbs));
+      setAfMicros(pickMicros(p));
       setShowFood(true);
     } catch {
-      setAfName(''); setAfCal(''); setAfServing(''); setAfProtein(''); setAfCarbs('');
+      setAfName(''); setAfCal(''); setAfServing(''); setAfProtein(''); setAfCarbs(''); setAfMicros(null);
       setShowFood(true);
     } finally {
       setScanLoading(false);
     }
+  }
+
+  function flashFastToast(text) {
+    setFastToast(text);
+    clearTimeout(fastToastTimer.current);
+    fastToastTimer.current = setTimeout(() => setFastToast(''), 3500);
+  }
+
+  async function checkFastingOnLog() {
+    if (!logUser) return;
+    const raw = await AsyncStorage.getItem(`tg_fasting_${logUser}`);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (!d.fastStart || !d.protocol) return;
+    const now = Date.now();
+    const eatStart = d.fastStart + d.protocol.fast * 3600000;
+    const eatEnd   = d.fastStart + (d.protocol.fast + d.protocol.eat) * 3600000;
+    if (now < eatStart) {
+      // Food logged during the fasting window — auto-end the fast early
+      const updated = {
+        ...d,
+        fastStart: null,
+        history: [...(d.history || []), { start: d.fastStart, end: now, duration: now - d.fastStart, protocol: d.protocol, endedEarly: true }],
+      };
+      await AsyncStorage.setItem(`tg_fasting_${logUser}`, JSON.stringify(updated));
+      flashFastToast('Fast ended early — fasting record auto-updated');
+    } else if (now > eatEnd) {
+      flashFastToast('You\'re logging outside your eating window — consider updating your fasting schedule');
+    }
+  }
+
+  function quickAddFood(food) {
+    const item = { name: food.name, serving: food.serving, calories: food.calories, protein: food.protein || 0, carbs: food.carbs || 0, fat: food.fat || 0, tag: null, photo: null };
+    setEntry(e => {
+      const foods = [...(e.foods || []), item];
+      return { ...e, foods, calories: foods.reduce((s, f) => s + (f.calories || 0), 0), protein: foods.reduce((s, f) => s + (f.protein || 0), 0), carbs: foods.reduce((s, f) => s + (f.carbs || 0), 0) };
+    });
+    awardXP('food_log').catch(() => {});
+    checkFastingOnLog();
   }
 
   function submitAddFood() {
@@ -421,6 +553,8 @@ export default function LogScreen({ navigation }) {
       fat:      0,
       tag:      afTag,
       photo:    null,
+      ...(afMicros || {}),
+      ...(parseFloat(afAlcohol) > 0 ? { alcohol: parseFloat(afAlcohol) } : {}),
     };
     setEntry(e => {
       const foods = [...(e.foods || []), food];
@@ -433,7 +567,10 @@ export default function LogScreen({ navigation }) {
       };
     });
     awardXP('food_log').catch(() => {});
+    checkFastingOnLog();
     setAfTag(null);
+    setAfMicros(null);
+    setAfAlcohol('');
     setShowFood(false);
   }
 
@@ -659,6 +796,7 @@ export default function LogScreen({ navigation }) {
 
   // ═══════════════════════════════════════════════════════════════════════
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={st.screen} contentContainerStyle={st.scrollContent}>
 
       {/* ── Page header — .page-header ── */}
@@ -771,7 +909,6 @@ export default function LogScreen({ navigation }) {
             {/* Mindfulness summary */}
             {mindfulRating && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingHorizontal: 4 }}>
-                <Text style={{ fontSize: 20 }}>{MINDFUL_OPTS.find(o => o.key === mindfulRating)?.emoji}</Text>
                 <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>
                   Today's eating: {MINDFUL_OPTS.find(o => o.key === mindfulRating)?.label}
                 </Text>
@@ -782,7 +919,7 @@ export default function LogScreen({ navigation }) {
             )}
             {!mindfulRating && (
               <TouchableOpacity onPress={() => setShowMindful(true)} style={{ marginTop: 10, paddingVertical: 8, borderWidth: 1, borderColor: mc.border, alignItems: 'center' }}>
-                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>🧘 How did your eating feel today?</Text>
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>How did your eating feel today?</Text>
               </TouchableOpacity>
             )}
 
@@ -914,7 +1051,19 @@ export default function LogScreen({ navigation }) {
             <View style={st.foodLogHeader}>
               <Text style={st.foodLogTitle}>Food Log</Text>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={st.foodCalTotal}>{totalCal} kcal eaten</Text>
+                {calorieTarget ? (
+                  <Text style={st.foodCalTotal}>
+                    {totalCal} / {calorieTarget.calories} kcal
+                    {'  '}
+                    <Text style={{ color: totalCal > calorieTarget.calories ? '#E57373' : accentColor }}>
+                      {totalCal > calorieTarget.calories
+                        ? `${totalCal - calorieTarget.calories} over`
+                        : `${calorieTarget.calories - totalCal} left`}
+                    </Text>
+                  </Text>
+                ) : (
+                  <Text style={st.foodCalTotal}>{totalCal} kcal eaten</Text>
+                )}
                 {entry?.steps ? (
                   <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3 }}>
                     Net: {Math.max(0, totalCal - Math.round(parseInt(entry.steps || 0) * 0.04))} kcal
@@ -923,11 +1072,56 @@ export default function LogScreen({ navigation }) {
                 ) : null}
               </View>
             </View>
+            {/* Calorie progress bar + macro mini-bars (shown when SmartTargets target exists) */}
+            {calorieTarget && (
+              <View style={{ marginBottom: 10 }}>
+                <View style={{ height: 4, backgroundColor: mc.border, borderRadius: 2, overflow: 'hidden', marginBottom: 6 }}>
+                  <View style={{ height: 4, width: `${Math.min(100, (totalCal / calorieTarget.calories) * 100).toFixed(1)}%`, backgroundColor: totalCal > calorieTarget.calories ? '#E57373' : accentColor, borderRadius: 2 }} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  {[
+                    { label: 'P', val: totalProt, goal: calorieTarget.protein, color: '#7C8BF5' },
+                    { label: 'C', val: totalCarb, goal: calorieTarget.carbs,   color: '#4CAF7C' },
+                    { label: 'F', val: totalFat,  goal: calorieTarget.fat,     color: '#FFB74D' },
+                  ].map(m => (
+                    <View key={m.label} style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
+                        <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3 }}>{m.label}</Text>
+                        <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3 }}>{m.val}g / {m.goal}g</Text>
+                      </View>
+                      <View style={{ height: 3, backgroundColor: mc.border, borderRadius: 2, overflow: 'hidden' }}>
+                        <View style={{ height: 3, width: `${Math.min(100, (m.val / m.goal) * 100).toFixed(1)}%`, backgroundColor: m.color, borderRadius: 2 }} />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
 
             {/* Food items — .food-items */}
             <View style={st.foodItems}>
               {(entry.foods || []).length === 0 ? (
-                <Text style={st.noFood}>Nothing logged yet. Add your first meal below.</Text>
+                <View>
+                  <Text style={[st.noFood, { marginBottom: 10 }]}>Nothing logged yet — tap a common item or use Add below.</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                    {[
+                      INDIAN_FOODS.find(f => f.name === 'Roti (wheat)'),
+                      INDIAN_FOODS.find(f => f.name === 'Egg (boiled)'),
+                      INDIAN_FOODS.find(f => f.name === 'Rice (cooked)'),
+                      INDIAN_FOODS.find(f => f.name === 'Dal Tadka'),
+                      INDIAN_FOODS.find(f => f.name === 'Chicken Curry'),
+                      INDIAN_FOODS.find(f => f.name === 'Chai (with milk)'),
+                      INDIAN_FOODS.find(f => f.name === 'Curd / Dahi'),
+                      INDIAN_FOODS.find(f => f.name === 'Dosa'),
+                    ].filter(Boolean).map(food => (
+                      <TouchableOpacity key={food.name} onPress={() => quickAddFood(food)}
+                        style={{ paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: mc.border, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text }}>{food.name.split(' (')[0]}</Text>
+                        <Text style={{ fontFamily: F.mono, fontSize: 9, color: accentColor }}>{food.calories} kcal</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
               ) : (
                 (entry.foods || []).map((f, i) => (
                   <View key={i} style={[st.foodItem, { alignItems: 'flex-start', paddingVertical: 8 }]}>
@@ -938,7 +1132,6 @@ export default function LogScreen({ navigation }) {
                     ) : (
                       Platform.OS === 'web' && (
                         <TouchableOpacity onPress={() => capturePhotoForFood(i)} style={{ width: 38, height: 38, marginRight: 8, borderWidth: 1, borderColor: mc.border, alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}>
-                          <Text style={{ fontSize: 16 }}>📷</Text>
                         </TouchableOpacity>
                       )
                     )}
@@ -962,6 +1155,37 @@ export default function LogScreen({ navigation }) {
               )}
             </View>
 
+            {/* Macro breakdown donut — additive chart block */}
+            {totalCal > 0 && (
+              <View style={{ borderWidth: 1, borderColor: mc.border, padding: 16, marginBottom: 14 }}>
+                <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, letterSpacing: 1, marginBottom: 10 }}>MACRO BREAKDOWN</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+                  <DonutChart
+                    segments={[
+                      { value: (entry.protein || 0) * 4, color: '#5B9DD9', label: 'Protein' },
+                      { value: (entry.carbs   || 0) * 4, color: '#C9A84C', label: 'Carbs' },
+                      { value: (entry.fat     || 0) * 9, color: '#E57373', label: 'Fat' },
+                    ]}
+                    mc={mc}
+                  />
+                  <View style={{ gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#5B9DD9' }} />
+                      <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text2 }}>Protein · {entry.protein || 0}g</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#C9A84C' }} />
+                      <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text2 }}>Carbs · {entry.carbs || 0}g</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#E57373' }} />
+                      <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text2 }}>Fat · {entry.fat || 0}g</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            )}
+
             {/* Food actions — .food-actions */}
             <View style={st.foodActions}>
               <TouchableOpacity style={st.foodBtn} onPress={openAddFood}>
@@ -971,6 +1195,9 @@ export default function LogScreen({ navigation }) {
               <TouchableOpacity style={st.foodBtn} onPress={() => setShowScanner(true)} disabled={scanLoading}>
                 <Text style={st.foodBtnTxt}>{scanLoading ? 'Looking up…' : '▦  Scan barcode'}</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={st.foodBtn} onPress={openPhotoRecognition}>
+                <Text style={st.foodBtnTxt}>Snap a photo</Text>
+              </TouchableOpacity>
               {templates.length > 0 && (
                 <TouchableOpacity style={st.foodBtn} onPress={() => setShowTemplates(true)}>
                   <Text style={st.foodBtnTxt}>⊞  Templates</Text>
@@ -978,7 +1205,7 @@ export default function LogScreen({ navigation }) {
               )}
               {(entry?.foods?.length > 0) && (
                 <TouchableOpacity style={st.foodBtn} onPress={() => { setTmplName(''); setShowSaveTmpl(true); }}>
-                  <Text style={st.foodBtnTxt}>💾  Save meal</Text>
+                  <Text style={st.foodBtnTxt}>Save meal</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1007,7 +1234,62 @@ export default function LogScreen({ navigation }) {
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
             <View style={st.modalBox}>
 
-              {afView === 'search' ? (
+              {afView === 'photo' ? (
+                <>
+                  <Text style={st.modalTitle}>Photo recognition</Text>
+
+                  {aiPhotoLoading && (
+                    <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                      <ActivityIndicator color={accentColor} />
+                      <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, marginTop: 12 }}>Analyzing your photo…</Text>
+                    </View>
+                  )}
+
+                  {!aiPhotoLoading && aiPhotoError !== '' && (
+                    <Text style={{ fontFamily: F.mono, fontSize: 12, color: '#E57373', paddingVertical: 16 }}>{aiPhotoError}</Text>
+                  )}
+
+                  {!aiPhotoLoading && !aiPhotoError && aiPhotoFoods.length === 0 && (
+                    <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, paddingVertical: 16 }}>
+                      Take or choose a photo of your meal — the AI will identify each item and estimate calories.
+                    </Text>
+                  )}
+
+                  {!aiPhotoLoading && aiPhotoFoods.length > 0 && (
+                    <ScrollView style={{ maxHeight: 320 }}>
+                      {aiPhotoFoods.map((item, i) => {
+                        const added = aiPhotoAdded.includes(i);
+                        return (
+                          <View key={i} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: mc.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text }}>{item.name}</Text>
+                              <Text style={{ fontFamily: F.mono, fontSize: 10, color: accentColor, marginTop: 2 }}>
+                                {item.calories} kcal · {item.protein}g P · {item.carbs}g C · {item.fat}g F · {item.serving}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              disabled={added}
+                              onPress={() => addDetectedFood(item, i)}
+                              style={{ paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: added ? mc.border : accentColor, backgroundColor: added ? 'transparent' : accentColor + '18' }}
+                            >
+                              <Text style={{ fontFamily: F.mono, fontSize: 11, color: added ? mc.text3 : accentColor }}>{added ? 'Added' : 'Add'}</Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+
+                  <View style={[st.modalActions, { marginTop: 14 }]}>
+                    <TouchableOpacity style={st.modalCancel} onPress={() => setShowFood(false)}>
+                      <Text style={st.modalCancelTxt}>Done</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={st.modalCancel} onPress={() => aiPhotoInputRef.current?.click()}>
+                      <Text style={[st.modalCancelTxt, { color: accentColor }]}>{aiPhotoFoods.length || aiPhotoError ? 'Try another photo' : 'Choose photo'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : afView === 'search' ? (
                 <>
                   <Text style={st.modalTitle}>Search food</Text>
 
@@ -1055,7 +1337,7 @@ export default function LogScreen({ navigation }) {
                     {!afSearching && afSearchQ.trim() === '' && (
                       <>
                         <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, letterSpacing: 1, paddingVertical: 8 }}>
-                          🇮🇳 QUICK ADD — INDIAN FOODS
+                          QUICK ADD — INDIAN FOODS
                         </Text>
                         {INDIAN_FOODS.map((item, i) => (
                           <TouchableOpacity
@@ -1066,6 +1348,22 @@ export default function LogScreen({ navigation }) {
                             <Text style={{ fontFamily: F.mono, fontSize: 12, color: mc.text }}>{item.name}</Text>
                             <Text style={{ fontFamily: F.mono, fontSize: 10, color: accentColor }}>
                               {item.calories} kcal · {item.protein}g P · {item.carbs}g C · {item.serving}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+
+                        <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, letterSpacing: 1, paddingVertical: 8, marginTop: 8 }}>
+                          QUICK ADD — DRINKS
+                        </Text>
+                        {DRINKS.map((item, i) => (
+                          <TouchableOpacity
+                            key={i}
+                            onPress={() => selectFoodResult(item)}
+                            style={{ paddingVertical: 9, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: mc.border }}
+                          >
+                            <Text style={{ fontFamily: F.mono, fontSize: 12, color: mc.text }}>{item.name}</Text>
+                            <Text style={{ fontFamily: F.mono, fontSize: 10, color: accentColor }}>
+                              {item.calories} kcal · {item.alcohol}g alcohol · {item.serving}
                             </Text>
                           </TouchableOpacity>
                         ))}
@@ -1112,6 +1410,11 @@ export default function LogScreen({ navigation }) {
                       <Text style={st.modalLabel}>Carbs (g)</Text>
                       <TextInput style={st.modalInput} value={afCarbs} onChangeText={setAfCarbs} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={mc.text3} />
                     </View>
+                  </View>
+
+                  <View style={st.modalField}>
+                    <Text style={st.modalLabel}>Alcohol (g) — optional</Text>
+                    <TextInput style={st.modalInput} value={afAlcohol} onChangeText={setAfAlcohol} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={mc.text3} />
                   </View>
 
                   {/* Tag selector */}
@@ -1171,8 +1474,10 @@ export default function LogScreen({ navigation }) {
                     <TouchableOpacity onPress={() => applyTemplate(t)} style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: accentColor, marginRight: 8 }}>
                       <Text style={{ fontFamily: F.mono, fontSize: 11, color: '#0A0A0A', fontWeight: '700' }}>Add</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => deleteTemplate(t.id)}>
-                      <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3 }}>✕</Text>
+                    <TouchableOpacity onPress={() => deleteTemplate(t.id)} style={{ padding: 4 }}>
+                      <Svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke={mc.text3} strokeWidth={2.2} strokeLinecap="round">
+                        <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+                      </Svg>
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -1242,10 +1547,9 @@ export default function LogScreen({ navigation }) {
                     backgroundColor: mindfulRating === o.key ? accentColor + '15' : 'transparent',
                   }}
                 >
-                  <Text style={{ fontSize: 22, marginRight: 14 }}>{o.emoji}</Text>
                   <View>
                     <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text }}>{o.label}</Text>
-                    <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3 }}>{o.sub}</Text>
+                    <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, marginTop: 2 }}>{o.sub}</Text>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -1266,6 +1570,16 @@ export default function LogScreen({ navigation }) {
         onChange: handlePhotoCapture,
       })}
 
+      {/* Hidden file input for AI photo food recognition (web only) */}
+      {Platform.OS === 'web' && React.createElement('input', {
+        ref: aiPhotoInputRef,
+        type: 'file',
+        accept: 'image/*',
+        capture: 'environment',
+        style: { display: 'none' },
+        onChange: handleAiPhotoCapture,
+      })}
+
       <BarcodeScanner
         visible={showScanner}
         onScanned={handleScanned}
@@ -1273,6 +1587,14 @@ export default function LogScreen({ navigation }) {
       />
 
     </ScrollView>
+    {fastToast ? (
+      <View style={{ position: 'absolute', bottom: 24, left: 0, right: 0, alignItems: 'center' }} pointerEvents="none">
+        <View style={{ backgroundColor: '#C9A84C', paddingHorizontal: 16, paddingVertical: 10 }}>
+          <Text style={{ fontFamily: F.mono, fontSize: 11, color: '#0A0A0A', fontWeight: '700' }}>{fastToast}</Text>
+        </View>
+      </View>
+    ) : null}
+    </View>
   );
 }
 

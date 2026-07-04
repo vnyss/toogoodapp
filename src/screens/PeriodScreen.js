@@ -5,6 +5,8 @@ import { F } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getUser, getToken } from '../auth';
 import { API_BASE } from '../config';
+import { HeatmapGrid } from '../components/Charts';
+import { getCyclePhase } from '../lib/cyclePhase';
 
 const PHASES = [
   { key: 'menstruation', label: 'Menstruation',  days: '1–5',   color: '#E57373', desc: 'Bleeding phase. Rest & iron-rich foods recommended.' },
@@ -31,6 +33,15 @@ function addDays(iso, n) {
 
 function fmtDate(iso) {
   return new Date(iso + 'T12:00').toLocaleDateString('en', { month: 'short', day: 'numeric' });
+}
+
+const FLOW_INTENSITY = { Light: 0.4, Medium: 0.7, Heavy: 1 };
+
+function last28Days() {
+  return Array.from({ length: 28 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (27 - i));
+    return d.toISOString().slice(0, 10);
+  });
 }
 
 export default function PeriodScreen() {
@@ -98,11 +109,8 @@ export default function PeriodScreen() {
 
   if (lastPeriod) {
     cycleDay = daysBetween(lastPeriod, today) + 1;
-    const posInCycle = ((cycleDay - 1) % cycleLen) + 1;
-    if (posInCycle <= periodLen)               currentPhase = PHASES[0];
-    else if (posInCycle <= cycleLen / 2 - 1)   currentPhase = PHASES[1];
-    else if (posInCycle <= cycleLen / 2 + 1)   currentPhase = PHASES[2];
-    else                                        currentPhase = PHASES[3];
+    const phaseKey = getCyclePhase({ lastPeriod, cycleLen, periodLen }, today);
+    currentPhase = PHASES.find(p => p.key === phaseKey) || PHASES[0];
 
     const lastStart = new Date(lastPeriod + 'T12:00');
     const cycleSince = Math.floor(daysBetween(lastPeriod, today) / cycleLen);
@@ -117,6 +125,17 @@ export default function PeriodScreen() {
         return d;
       })
     : [];
+
+  // Heatmap of recent days: intensity from logged flow (falls back to symptom count if no flow logged)
+  const logsByDate = Object.fromEntries(logs.map(l => [l.date, l]));
+  const heatmapCells = last28Days().map(iso => {
+    const entry = logsByDate[iso];
+    let intensity = 0;
+    if (entry) {
+      intensity = FLOW_INTENSITY[entry.flow] ?? Math.min(1, (entry.symptoms?.length || 0) / SYMPTOMS.length);
+    }
+    return { key: iso, intensity };
+  });
 
   const s = StyleSheet.create({
     root:    { flex: 1, backgroundColor: mc.bg },
@@ -147,7 +166,6 @@ export default function PeriodScreen() {
   if (gender && gender !== 'female' && gender !== 'unknown' && gender !== '') {
     return (
       <View style={[s.root, { alignItems: 'center', justifyContent: 'center', padding: 32 }]}>
-        <Text style={{ fontSize: 40, marginBottom: 16 }}>🚫</Text>
         <Text style={{ fontFamily: F.serif, fontSize: 18, color: mc.text, textAlign: 'center', marginBottom: 8 }}>
           This feature is for female users
         </Text>
@@ -213,7 +231,7 @@ export default function PeriodScreen() {
               value: lastPeriod || '',
               max: today,
               onChange: e => setLastPeriodAndSave(e.target.value),
-              style: { fontFamily: 'Courier Prime, monospace', fontSize: 13, background: 'transparent', border: `1px solid ${mc.border}`, padding: 10, color: mc.text, width: '100%', boxSizing: 'border-box' },
+              style: { fontFamily: F.mono, fontSize: 13, background: 'transparent', border: `1px solid ${mc.border}`, padding: 10, color: mc.text, width: '100%', boxSizing: 'border-box' },
             })
           ) : (
             <TouchableOpacity style={s.datBtn}>
@@ -277,6 +295,17 @@ export default function PeriodScreen() {
                 </Text>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Symptom / flow heatmap */}
+        {logs.length > 0 && (
+          <View style={s.card}>
+            <Text style={s.label}>LAST 28 DAYS · FLOW & SYMPTOM INTENSITY</Text>
+            <HeatmapGrid cells={heatmapCells} color={accentColor} mc={mc} columns={7} cellSize={16} gap={4} />
+            <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, marginTop: 10 }}>
+              Darker = heavier flow (or more symptoms logged on days without a flow entry).
+            </Text>
           </View>
         )}
 

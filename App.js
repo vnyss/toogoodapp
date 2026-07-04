@@ -1,9 +1,10 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
 import Svg, { Path, Circle, Line, Rect, Polyline, Polygon } from 'react-native-svg';
-import { C } from './src/theme';
+import LogoSvg from './src/LogoSvg';
+import { C, F } from './src/theme';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
-import { getToken, getUser, clearAuth } from './src/auth';
+import { getToken, getUser, clearAuth, isOnboardingDone, markOnboardingNeeded, markOnboardingDone } from './src/auth';
 import LoginScreen       from './src/screens/LoginScreen';
 import OnboardingScreen  from './src/screens/OnboardingScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
@@ -30,6 +31,8 @@ import StepTrackerScreen    from './src/screens/StepTrackerScreen';
 import WaterTrackerScreen   from './src/screens/WaterTrackerScreen';
 import SleepTrackerScreen   from './src/screens/SleepTrackerScreen';
 import GuidedWorkoutScreen  from './src/screens/GuidedWorkoutScreen';
+import HomeWorkoutScreen    from './src/screens/HomeWorkoutScreen';
+import SmartTargetsScreen   from './src/screens/SmartTargetsScreen';
 import WorkoutProgramsScreen from './src/screens/WorkoutProgramsScreen';
 import HIITTimerScreen      from './src/screens/HIITTimerScreen';
 import FastingScreen        from './src/screens/FastingScreen';
@@ -41,6 +44,15 @@ import TransformationScreen from './src/screens/TransformationScreen';
 import RemindersScreen     from './src/screens/RemindersScreen';
 import NutrientsScreen     from './src/screens/NutrientsScreen';
 import BMIScreen           from './src/screens/BMIScreen';
+import ScheduleScreen        from './src/screens/ScheduleScreen';
+import CompeteScreen         from './src/screens/CompeteScreen';
+import TrackersScreen        from './src/screens/TrackersScreen';
+import HealthMetricsScreen   from './src/screens/HealthMetricsScreen';
+import WorkoutSessionsScreen from './src/screens/WorkoutSessionsScreen';
+import ProgramsLibraryScreen from './src/screens/ProgramsLibraryScreen';
+import MealPlanningScreen    from './src/screens/MealPlanningScreen';
+import GoalsProgressScreen   from './src/screens/GoalsProgressScreen';
+import WatchConnectScreen    from './src/screens/WatchConnectScreen';
 
 const SCREENS = {
   dashboard:  DashboardScreen,
@@ -64,6 +76,8 @@ const SCREENS = {
   water:           WaterTrackerScreen,
   sleep:           SleepTrackerScreen,
   guidedworkout:   GuidedWorkoutScreen,
+  homeworkout:     HomeWorkoutScreen,
+  smarttargets:    SmartTargetsScreen,
   programs:        WorkoutProgramsScreen,
   hiittimer:       HIITTimerScreen,
   challenges:      ChallengesScreen,
@@ -78,6 +92,15 @@ const SCREENS = {
   reminders:       RemindersScreen,
   nutrients:       NutrientsScreen,
   bmi:             BMIScreen,
+  schedule:        ScheduleScreen,
+  compete:         CompeteScreen,
+  trackers:        TrackersScreen,
+  healthmetrics:   HealthMetricsScreen,
+  sessions:        WorkoutSessionsScreen,
+  programslibrary: ProgramsLibraryScreen,
+  mealplanning:    MealPlanningScreen,
+  goalsprogress:   GoalsProgressScreen,
+  watchconnect:    WatchConnectScreen,
 };
 
 /* ── SVG icons matching the website ── */
@@ -108,6 +131,8 @@ function Icon({ name, size = 14, color }) {
   if (name === 'water')         return <Svg {...p}><Path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" /></Svg>;
   if (name === 'sleep')         return <Svg {...p}><Path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></Svg>;
   if (name === 'guidedworkout') return <Svg {...p}><Path d="M5 3l14 9-14 9V3z" /></Svg>;
+  if (name === 'homeworkout')  return <Svg {...p}><Path d="M3 12l9-9 9 9" /><Path d="M5 10v10h14V10" /><Path d="M9 20v-6h6v6" /></Svg>;
+  if (name === 'smarttargets') return <Svg {...p}><Circle cx={12} cy={12} r={9} /><Circle cx={12} cy={12} r={4} /><Circle cx={12} cy={12} r={0.5} /><Path d="M12 3v3M12 18v3" /></Svg>;
   if (name === 'programs')     return <Svg {...p}><Rect x={3} y={4} width={18} height={18} rx={2} /><Path d="M16 2v4M8 2v4M3 10h18" /><Path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></Svg>;
   if (name === 'hiittimer')    return <Svg {...p}><Circle cx={12} cy={12} r={10} /><Path d="M12 6v6l3 3" /><Path d="M16.24 7.76 18 6" /></Svg>;
   if (name === 'fasting')      return <Svg {...p}><Circle cx={12} cy={12} r={10} /><Path d="M12 6v6l4 2" /></Svg>;
@@ -119,31 +144,28 @@ function Icon({ name, size = 14, color }) {
   if (name === 'reminders')    return <Svg {...p}><Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><Path d="M13.73 21a2 2 0 0 1-3.46 0" /></Svg>;
   if (name === 'nutrients')    return <Svg {...p}><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></Svg>;
   if (name === 'bmi')          return <Svg {...p}><Circle cx={12} cy={12} r={10} /><Line x1={2} y1={12} x2={22} y2={12} /><Path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></Svg>;
+  if (name === 'watchconnect') return <Svg {...p}><Rect x={7} y={2} width={10} height={3} rx={1} /><Rect x={5} y={5} width={14} height={14} rx={3} /><Path d="M12 9v4l2.5 2.5" /><Rect x={7} y={19} width={10} height={3} rx={1} /></Svg>;
   return null;
 }
 
-/* ── Flame logo from website ── */
+/* ── Brand logo ── */
 function FlameLogo() {
   const { accentColor } = useTheme();
-  return (
-    <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
-      <Path d="M12.8324 21.8013C15.9583 21.1747 20 18.926 20 13.1112C20 7.8196 16.1267 4.29593 13.3415 2.67685C12.7235 2.31757 12 2.79006 12 3.50492V5.3334C12 6.77526 11.3938 9.40711 9.70932 10.5018C8.84932 11.0607 7.92052 10.2242 7.816 9.20388L7.73017 8.36604C7.6304 7.39203 6.63841 6.80075 5.85996 7.3946C4.46147 8.46144 3 10.3296 3 13.1112C3 20.2223 8.28889 22.0001 10.9333 22.0001C11.0871 22.0001 11.2488 21.9955 11.4171 21.9858C10.1113 21.8742 8 21.064 8 18.4442C8 16.3949 9.49507 15.0085 10.631 14.3346C10.9365 14.1533 11.2941 14.3887 11.2941 14.7439V15.3331C11.2941 15.784 11.4685 16.4889 11.8836 16.9714C12.3534 17.5174 13.0429 16.9454 13.0985 16.2273C13.1161 16.0008 13.3439 15.8564 13.5401 15.9711C14.1814 16.3459 15 17.1465 15 18.4442C15 20.4922 13.871 21.4343 12.8324 21.8013Z" fill={accentColor} />
-    </Svg>
-  );
+  return <LogoSvg color={accentColor} size={48} />;
 }
 
 /* ── Nav item ── */
 function NavItem({ navKey, label, iconName, active, onPress }) {
-  const { mc, accentColor, accentDim } = useTheme();
+  const { mc, accentColor, accentDim, accentGlow } = useTheme();
   return (
     <TouchableOpacity
-      style={[sb.item, active && { backgroundColor: accentDim }]}
+      style={[sb.item, active && { backgroundColor: accentDim, borderLeftWidth: 2, borderLeftColor: accentColor, boxShadow: `inset ${accentGlow}` }]}
       onPress={() => onPress(navKey)}
     >
       <View style={{ opacity: active ? 1 : 0.55 }}>
         <Icon name={iconName} color={active ? accentColor : mc.text2} />
       </View>
-      <Text style={[sb.itemTxt, { color: mc.text2 }, active && { color: accentColor }]}>{label}</Text>
+      <Text style={[sb.itemTxt, { color: mc.text2 }, active && { color: accentColor, fontWeight: '600' }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -158,9 +180,30 @@ function SectionHeader({ label, open, onToggle, hasActive }) {
       activeOpacity={0.7}
     >
       <Text style={[sb.sectionLabel, { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, color: hasActive ? accentColor : mc.text3 }]}>{label}</Text>
-      <Text style={{ fontFamily: "'Courier Prime', monospace", fontSize: 14, color: hasActive ? accentColor : mc.text3, paddingRight: 4 }}>{open ? '−' : '+'}</Text>
+      <Text style={{ fontFamily: F.mono, fontSize: 14, color: hasActive ? accentColor : mc.text3, paddingRight: 4 }}>{open ? '−' : '+'}</Text>
     </TouchableOpacity>
   );
+}
+
+/* ── Mobile top bar (hamburger + brand) ── */
+function MobileTopBar({ onMenuPress }) {
+  const { mc } = useTheme();
+  return (
+    <View style={[styles.topBar, { backgroundColor: mc.sidebar, borderBottomColor: mc.border }]}>
+      <TouchableOpacity onPress={onMenuPress} style={styles.hamburger}>
+        <View style={[styles.hLine, { backgroundColor: mc.text2 }]} />
+        <View style={[styles.hLine, { backgroundColor: mc.text2 }]} />
+        <View style={[styles.hLine, { backgroundColor: mc.text2 }]} />
+      </TouchableOpacity>
+      <Text style={[styles.topBarTitle, { color: mc.text }]}>Too Good</Text>
+    </View>
+  );
+}
+
+/* ── Root background (reads theme — App itself sits above the ThemeProvider) ── */
+function RootView({ children }) {
+  const { mc } = useTheme();
+  return <View style={[styles.root, { backgroundColor: mc.bg }]}>{children}</View>;
 }
 
 /* ── Sidebar ── */
@@ -169,20 +212,17 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
 
   // which sections are expanded — Navigation always open, others default collapsed
   const [open, setOpen] = React.useState({
-    nav: true, fitness: false, health: false, nutrition: false,
-    gym: false, compete: false, social: false,
+    nav: true, fitness: false, health: false, nutrition: false, gym: false,
   });
 
   // auto-expand the section containing the active screen
   React.useEffect(() => {
     const sectionOf = {
-      dashboard: 'nav', ai: 'nav', log: 'nav', adapt: 'nav',
-      coach: 'fitness', exercise: 'fitness', calendar: 'fitness', diary: 'fitness', score: 'fitness',
-      steps: 'health', water: 'health', sleep: 'health', monitor: 'health', bmi: 'health', healthrisk: 'health', reminders: 'health', period: 'health',
-      nutrients: 'nutrition', recipe: 'nutrition', mealplan: 'nutrition', fasting: 'nutrition', transformation: 'nutrition',
-      workout: 'gym', guidedworkout: 'gym', programs: 'gym', hiittimer: 'gym', exerciselibrary: 'gym', gymprogress: 'gym', gymtools: 'gym',
-      challenges: 'compete', clubs: 'compete', segments: 'compete',
-      socials: 'social', profile: 'social',
+      dashboard: 'nav', ai: 'nav', log: 'nav', calendar: 'nav', adapt: 'nav',
+      coach: 'fitness', schedule: 'fitness', exercise: 'fitness', diary: 'fitness', score: 'fitness',
+      trackers: 'health', steps: 'health', water: 'health', sleep: 'health', monitor: 'health', healthmetrics: 'health', bmi: 'health', healthrisk: 'health', reminders: 'health', period: 'health', watchconnect: 'health',
+      nutrients: 'nutrition', mealplanning: 'nutrition', recipe: 'nutrition', mealplan: 'nutrition', goalsprogress: 'nutrition', smarttargets: 'nutrition', transformation: 'nutrition', fasting: 'nutrition',
+      workout: 'gym', sessions: 'gym', guidedworkout: 'gym', homeworkout: 'gym', programslibrary: 'gym', programs: 'gym', hiittimer: 'gym', exerciselibrary: 'gym', gymprogress: 'gym', gymtools: 'gym',
     };
     const sec = sectionOf[screen];
     if (sec && !open[sec]) setOpen(prev => ({ ...prev, [sec]: true }));
@@ -200,7 +240,10 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
           <Text style={[sb.brandName, { color: mc.text }]}>Too Good</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[sb.newChatBtn, { borderColor: mc.border }]} onPress={() => navigate('ai')}>
-          <Text style={sb.newChatTxt}>＋  New AI chat</Text>
+          <Svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke={C.text2} strokeWidth={2.2} strokeLinecap="round">
+            <Path d="M12 5v14M5 12h14" />
+          </Svg>
+          <Text style={sb.newChatTxt}>New AI chat</Text>
         </TouchableOpacity>
       </View>
 
@@ -209,84 +252,67 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
         {/* ── Navigation (always visible, no collapse) ── */}
         <Text style={[sb.sectionLabel, { color: mc.text3 }]}>Navigation</Text>
         <NavItem navKey="dashboard" label="Dashboard" iconName="dashboard" active={screen === 'dashboard'} onPress={navigate} />
-        <NavItem navKey="ai"        label="AI Coach"   iconName="ai"        active={screen === 'ai'}        onPress={navigate} />
+        <NavItem navKey="ai"        label="AI Assistant" iconName="ai"      active={screen === 'ai'}        onPress={navigate} />
         <NavItem navKey="log"       label="Log Today"  iconName="log"       active={screen === 'log'}       onPress={navigate} />
-        <NavItem navKey="adapt"     label="TG·Adapt"   iconName="adapt"     active={screen === 'adapt'}     onPress={navigate} />
+        <NavItem navKey="calendar"  label="Calendar"   iconName="calendar"  active={screen === 'calendar'}  onPress={navigate} />
+        <NavItem navKey="adapt"     label="My Plan"    iconName="adapt"     active={screen === 'adapt'}     onPress={navigate} />
 
         {/* ── Fitness ── */}
-        <SectionHeader label="Fitness" open={open.fitness} onToggle={() => toggle('fitness')} hasActive={inSection(['coach','exercise','calendar','diary','score'])} />
+        <SectionHeader label="Fitness" open={open.fitness} onToggle={() => toggle('fitness')} hasActive={inSection(['coach','schedule','exercise','diary','score'])} />
         {open.fitness && (
           <>
-            <NavItem navKey="coach"    label="Coach"             iconName="coach"    active={screen === 'coach'}    onPress={navigate} />
-            <NavItem navKey="exercise" label="Exercise Schedule" iconName="exercise" active={screen === 'exercise'} onPress={navigate} />
-            <NavItem navKey="calendar" label="Calendar"          iconName="calendar" active={screen === 'calendar'} onPress={navigate} />
-            <NavItem navKey="diary"    label="Daily Diary"       iconName="diary"    active={screen === 'diary'}    onPress={navigate} />
-            <NavItem navKey="score"    label="Score"             iconName="score"    active={screen === 'score'}    onPress={navigate} />
+            <NavItem navKey="coach"    label="Coach"     iconName="coach"    active={screen === 'coach'}    onPress={navigate} />
+            <NavItem navKey="schedule" label="Exercise Schedule" iconName="calendar" active={screen === 'schedule' || screen === 'exercise'} onPress={navigate} />
+            <NavItem navKey="diary"    label="Workout Journal" iconName="diary" active={screen === 'diary'}    onPress={navigate} />
+            <NavItem navKey="score"    label="Score"     iconName="score"    active={screen === 'score'}    onPress={navigate} />
           </>
         )}
 
         {/* ── Health ── */}
-        <SectionHeader label="Health" open={open.health} onToggle={() => toggle('health')} hasActive={inSection(['steps','water','sleep','monitor','bmi','healthrisk','reminders','period'])} />
+        <SectionHeader label="Health" open={open.health} onToggle={() => toggle('health')} hasActive={inSection(['trackers','steps','water','sleep','monitor','healthmetrics','bmi','healthrisk','reminders','period','watchconnect'])} />
         {open.health && (
           <>
-            <NavItem navKey="steps"      label="Step Tracker"   iconName="steps"      active={screen === 'steps'}      onPress={navigate} />
-            <NavItem navKey="water"      label="Water Tracker"  iconName="water"      active={screen === 'water'}      onPress={navigate} />
-            <NavItem navKey="sleep"      label="Sleep Tracker"  iconName="sleep"      active={screen === 'sleep'}      onPress={navigate} />
-            <NavItem navKey="monitor"    label="Blood Monitor"  iconName="monitor"    active={screen === 'monitor'}    onPress={navigate} />
-            <NavItem navKey="bmi"        label="BMI & Metrics"  iconName="bmi"        active={screen === 'bmi'}        onPress={navigate} />
-            <NavItem navKey="healthrisk" label="Health Risk"    iconName="healthrisk" active={screen === 'healthrisk'} onPress={navigate} />
-            <NavItem navKey="reminders"  label="Reminders"      iconName="reminders"  active={screen === 'reminders'}  onPress={navigate} />
-            {(userGender === 'female' || userGender === '') && (
-              <NavItem navKey="period"   label="Period Tracker" iconName="period"     active={screen === 'period'}     onPress={navigate} />
+            <NavItem navKey="trackers"      label="Trackers"       iconName="steps"      active={screen === 'trackers' || screen === 'steps' || screen === 'water' || screen === 'sleep'} onPress={navigate} />
+            <NavItem navKey="monitor"       label="Blood Monitor"  iconName="monitor"    active={screen === 'monitor'}    onPress={navigate} />
+            <NavItem navKey="healthmetrics" label="Health Metrics" iconName="bmi"        active={screen === 'healthmetrics' || screen === 'bmi' || screen === 'healthrisk'} onPress={navigate} />
+            <NavItem navKey="reminders"     label="Reminders"      iconName="reminders"  active={screen === 'reminders'}  onPress={navigate} />
+            <NavItem navKey="watchconnect"  label="Watch Connect"  iconName="watchconnect" active={screen === 'watchconnect'} onPress={navigate} />
+            {userGender === 'female' && (
+              <NavItem navKey="period"      label="Period Tracker" iconName="period"     active={screen === 'period'}     onPress={navigate} />
             )}
           </>
         )}
 
         {/* ── Nutrition ── */}
-        <SectionHeader label="Nutrition" open={open.nutrition} onToggle={() => toggle('nutrition')} hasActive={inSection(['nutrients','recipe','mealplan','fasting','transformation'])} />
+        <SectionHeader label="Nutrition" open={open.nutrition} onToggle={() => toggle('nutrition')} hasActive={inSection(['nutrients','mealplanning','recipe','mealplan','goalsprogress','smarttargets','fasting','transformation'])} />
         {open.nutrition && (
           <>
-            <NavItem navKey="nutrients"      label="Nutrients"       iconName="nutrients"      active={screen === 'nutrients'}      onPress={navigate} />
-            <NavItem navKey="recipe"         label="Recipe Builder"  iconName="recipe"         active={screen === 'recipe'}         onPress={navigate} />
-            <NavItem navKey="mealplan"       label="Meal Plan"       iconName="mealplan"       active={screen === 'mealplan'}       onPress={navigate} />
-            <NavItem navKey="fasting"        label="Fasting Tracker" iconName="fasting"        active={screen === 'fasting'}        onPress={navigate} />
-            <NavItem navKey="transformation" label="Transformation"  iconName="transformation" active={screen === 'transformation'} onPress={navigate} />
+            <NavItem navKey="nutrients"     label="Nutrients"       iconName="nutrients"     active={screen === 'nutrients'}      onPress={navigate} />
+            <NavItem navKey="mealplanning"  label="Meal Planning"   iconName="mealplan"      active={screen === 'mealplanning' || screen === 'recipe' || screen === 'mealplan'} onPress={navigate} />
+            <NavItem navKey="goalsprogress" label="Goals"            iconName="smarttargets" active={screen === 'goalsprogress' || screen === 'smarttargets' || screen === 'transformation'} onPress={navigate} />
+            <NavItem navKey="fasting"       label="Fasting Tracker" iconName="fasting"       active={screen === 'fasting'}        onPress={navigate} />
           </>
         )}
 
         {/* ── Gym ── */}
-        <SectionHeader label="Gym" open={open.gym} onToggle={() => toggle('gym')} hasActive={inSection(['workout','guidedworkout','programs','hiittimer','exerciselibrary','gymprogress','gymtools'])} />
+        <SectionHeader label="Gym" open={open.gym} onToggle={() => toggle('gym')} hasActive={inSection(['workout','sessions','guidedworkout','homeworkout','programslibrary','programs','hiittimer','exerciselibrary','gymprogress','gymtools'])} />
         {open.gym && (
           <>
-            <NavItem navKey="workout"         label="Workout Tracker"  iconName="workout"         active={screen === 'workout'}         onPress={navigate} />
-            <NavItem navKey="guidedworkout"   label="Guided Workouts"  iconName="guidedworkout"   active={screen === 'guidedworkout'}   onPress={navigate} />
-            <NavItem navKey="programs"        label="Programs & Plans" iconName="programs"        active={screen === 'programs'}        onPress={navigate} />
-            <NavItem navKey="hiittimer"       label="HIIT Timer"       iconName="hiittimer"       active={screen === 'hiittimer'}       onPress={navigate} />
-            <NavItem navKey="exerciselibrary" label="Exercise Library" iconName="exerciselibrary" active={screen === 'exerciselibrary'} onPress={navigate} />
-            <NavItem navKey="gymprogress"     label="Gym Progress"     iconName="gymprogress"     active={screen === 'gymprogress'}     onPress={navigate} />
-            <NavItem navKey="gymtools"        label="Gym Tools"        iconName="gymtools"        active={screen === 'gymtools'}        onPress={navigate} />
+            <NavItem navKey="workout"          label="Log Workout"       iconName="workout"   active={screen === 'workout'}         onPress={navigate} />
+            <NavItem navKey="sessions"         label="Sessions"          iconName="guidedworkout" active={screen === 'sessions' || screen === 'guidedworkout' || screen === 'homeworkout' || screen === 'hiittimer'} onPress={navigate} />
+            <NavItem navKey="programslibrary"  label="Programs"          iconName="programs" active={screen === 'programslibrary' || screen === 'programs' || screen === 'exerciselibrary'} onPress={navigate} />
+            <NavItem navKey="gymprogress"      label="Progress"          iconName="gymprogress" active={screen === 'gymprogress'}     onPress={navigate} />
+            <NavItem navKey="gymtools"         label="Calculators"       iconName="gymtools"   active={screen === 'gymtools'}        onPress={navigate} />
           </>
         )}
 
-        {/* ── Compete ── */}
-        <SectionHeader label="Compete" open={open.compete} onToggle={() => toggle('compete')} hasActive={inSection(['challenges','clubs','segments'])} />
-        {open.compete && (
-          <>
-            <NavItem navKey="challenges" label="Challenges" iconName="challenges" active={screen === 'challenges'} onPress={navigate} />
-            <NavItem navKey="clubs"      label="Clubs"      iconName="clubs"      active={screen === 'clubs'}      onPress={navigate} />
-            <NavItem navKey="segments"   label="Segments"   iconName="segments"   active={screen === 'segments'}   onPress={navigate} />
-          </>
-        )}
+        {/* ── Compete (merged: Challenges + Clubs + Segments) — separated so it doesn't read as nested under Gym ── */}
+        <View style={[sb.settingsSep, { marginTop: 8 }]} />
+        <NavItem navKey="compete" label="Compete" iconName="challenges" active={screen === 'compete' || screen === 'challenges' || screen === 'clubs' || screen === 'segments'} onPress={navigate} />
 
         {/* ── Social — just above Settings ── */}
         <View style={[sb.settingsSep, { marginTop: 8 }]} />
-        <SectionHeader label="Social" open={open.social} onToggle={() => toggle('social')} hasActive={inSection(['socials','profile'])} />
-        {open.social && (
-          <>
-            <NavItem navKey="socials" label="Socials"    iconName="socials" active={screen === 'socials'} onPress={navigate} />
-            <NavItem navKey="profile" label="My Profile" iconName="profile" active={screen === 'profile'} onPress={navigate} />
-          </>
-        )}
+        <NavItem navKey="socials" label="Socials" iconName="socials" active={screen === 'socials'} onPress={navigate} />
 
         <NavItem navKey="settings" label="Settings" iconName="settings" active={screen === 'settings'} onPress={navigate} />
         <View style={{ height: 16 }} />
@@ -300,7 +326,7 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
           <Text style={[sb.profileName, { color: mc.text }]} numberOfLines={1}>{username}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={{ paddingHorizontal: 10, paddingVertical: 6 }} onPress={onLogout}>
-          <Text style={{ fontSize: 11, color: mc.text3, fontFamily: "'Courier Prime', monospace", letterSpacing: 2 }}>Log out</Text>
+          <Text style={{ fontSize: 11, color: mc.text3, fontFamily: F.mono, letterSpacing: 1 }}>Log out</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -318,9 +344,16 @@ export default function App() {
   useEffect(() => {
     getToken().then(async t => {
       if (t) {
+        const done = await isOnboardingDone();
+        if (!done) {
+          const u = await getUser();
+          setUsername(u || '');
+          setScreen('onboarding');
+          return;
+        }
         const u = await getUser();
         setUsername(u || '');
-        const saved = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('tg_screen') : null;
+        const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('tg_screen') : null;
         setScreen(saved && SCREENS[saved] ? saved : 'dashboard');
         // Fetch gender for period tracker visibility
         try {
@@ -337,7 +370,12 @@ export default function App() {
   }, []);
 
   function persistScreen(s) {
-    if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('tg_screen', s);
+    if (screen === 'settings' && s !== 'settings' && typeof window !== 'undefined' && window.__tgAppearanceDirty) {
+      const leave = window.confirm('Please save changes. Otherwise, no changes will be saved.\n\nLeave without saving?');
+      if (!leave) return;
+      window.__tgAppearanceDirty = false;
+    }
+    if (typeof localStorage !== 'undefined') localStorage.setItem('tg_screen', s);
     setScreen(s);
   }
 
@@ -346,9 +384,9 @@ export default function App() {
     replace:  (s) => { if (s === 'login') { setUsername(''); sessionStorage && sessionStorage.removeItem('tg_screen'); } persistScreen(s); },
   };
 
-  async function handleLoginSuccess(u)  { setUsername(u); persistScreen('dashboard'); }
-  async function handleSignupSuccess(u) { setUsername(u); setScreen('onboarding'); }
-  async function handleLogout() { await clearAuth(); setUsername(''); sessionStorage && sessionStorage.removeItem('tg_screen'); setScreen('login'); }
+  async function handleLoginSuccess(u)  { setUsername(u); await markOnboardingDone(); persistScreen('dashboard'); }
+  async function handleSignupSuccess(u) { setUsername(u); await markOnboardingNeeded(); setScreen('onboarding'); }
+  async function handleLogout() { await clearAuth(); setUsername(''); typeof localStorage !== 'undefined' && localStorage.removeItem('tg_screen'); setScreen('login'); }
 
   if (screen === 'loading')    return <ThemeProvider username=""><View style={{ flex: 1, backgroundColor: C.bg }} /></ThemeProvider>;
   if (screen === 'login')      return <ThemeProvider username=""><LoginScreen navigation={{ ...navigation, onSuccess: handleLoginSuccess, onSignupSuccess: handleSignupSuccess }} /></ThemeProvider>;
@@ -358,7 +396,7 @@ export default function App() {
 
   return (
     <ThemeProvider username={username}>
-      <View style={styles.root}>
+      <RootView>
         {/* Desktop: always-visible sidebar */}
         {!isMobile && (
           <Sidebar screen={screen} navigate={persistScreen} username={username} onLogout={handleLogout} userGender={userGender} />
@@ -366,16 +404,7 @@ export default function App() {
 
         <View style={styles.content}>
           {/* Mobile top bar with hamburger */}
-          {isMobile && (
-            <View style={styles.topBar}>
-              <TouchableOpacity onPress={() => setSidebarOpen(v => !v)} style={styles.hamburger}>
-                <View style={styles.hLine} />
-                <View style={styles.hLine} />
-                <View style={styles.hLine} />
-              </TouchableOpacity>
-              <Text style={styles.topBarTitle}>Too Good</Text>
-            </View>
-          )}
+          {isMobile && <MobileTopBar onMenuPress={() => setSidebarOpen(v => !v)} />}
           <Screen key={screen} navigation={navigation} />
         </View>
 
@@ -398,7 +427,7 @@ export default function App() {
             </View>
           </>
         )}
-      </View>
+      </RootView>
     </ThemeProvider>
   );
 }
@@ -406,50 +435,40 @@ export default function App() {
 const styles = StyleSheet.create({
   root:         { flex: 1, flexDirection: 'row', backgroundColor: C.bg },
   content:      { flex: 1, overflow: 'hidden', flexDirection: 'column' },
-  topBar:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.sidebar },
+  topBar:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.sidebar },
   hamburger:    { padding: 6, gap: 4, justifyContent: 'center' },
   hLine:        { width: 20, height: 2, backgroundColor: C.text2, marginVertical: 2 },
-  topBarTitle:  { fontFamily: "'Special Elite', monospace", fontSize: 15, color: C.text, letterSpacing: 1.5, marginLeft: 12 },
+  topBarTitle:  { fontFamily: F.display, fontWeight: '700', fontSize: 15, color: C.text, letterSpacing: 0.2, marginLeft: 12 },
   overlay:      { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 10 },
   mobileSidebar:{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 260, zIndex: 11 },
 });
 
-// Sidebar styles — mirrors _sidebar.html CSS exactly
+// Sidebar styles
 const sb = StyleSheet.create({
-  // var(--sw) = 260px, var(--sidebar) = #080808
-  sidebar:     { width: 260, backgroundColor: C.sidebar, borderRightWidth: 1, borderRightColor: C.border, height: '100%', flexShrink: 0, flexDirection: 'column' },
+  sidebar:     { width: 252, backgroundColor: C.sidebar, borderRightWidth: 1, borderRightColor: C.border, height: '100%', flexShrink: 0, flexDirection: 'column' },
 
-  // .sb-top
   top:         { padding: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   brand:       { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  brandName:   { fontFamily: "'Special Elite', monospace", fontSize: 15, color: C.text, letterSpacing: 1.5 },
+  brandName:   { fontFamily: F.display, fontWeight: '600', fontSize: 20, color: C.text, letterSpacing: 0.3 },
 
-  // .new-chat-btn
   newChatBtn:  { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: C.border },
-  newChatTxt:  { fontFamily: "'Courier Prime', monospace", fontSize: 13, color: C.text2, letterSpacing: 1.5 },
+  newChatTxt:  { fontFamily: F.mono, fontSize: 11, color: C.text2, letterSpacing: 1 },
 
-  // .sb-nav
-  nav:         { flex: 1, paddingTop: 8, paddingBottom: 6 },
+  nav:         { flex: 1, paddingTop: 8, paddingBottom: 4 },
 
-  // .sb-section-label
-  sectionLabel:{ fontSize: 10, color: C.text3, letterSpacing: 6, textTransform: 'uppercase', fontFamily: "'Courier Prime', monospace", paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4 },
+  sectionLabel:{ fontSize: 9, color: C.text3, letterSpacing: 2.5, textTransform: 'uppercase', fontFamily: F.mono, fontWeight: '600', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 5 },
 
-  // .sb-item
-  item:        { flexDirection: 'row', alignItems: 'center', gap: 9, width: '100%', paddingVertical: 8, paddingHorizontal: 14 },
-  itemActive:  { backgroundColor: 'rgba(201,168,76,0.09)' },
-  itemTxt:     { fontSize: 13, color: C.text2, fontFamily: "'Courier Prime', monospace", letterSpacing: 0.5 },
+  item:        { flexDirection: 'row', alignItems: 'center', gap: 9, width: '100%', paddingVertical: 7, paddingHorizontal: 14, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: 'transparent' },
+  itemActive:  { backgroundColor: 'rgba(201,168,76,0.07)' },
+  itemTxt:     { fontSize: 12, color: C.text2, fontFamily: F.mono, letterSpacing: 0.3 },
   itemTxtActive:{ color: C.gold },
 
-  // Score separator — border-top + margin
-  scoreSep:    { height: 1, backgroundColor: C.border, marginHorizontal: 14, marginTop: 6, marginBottom: 6 },
+  scoreSep:    { height: 1, backgroundColor: C.border, marginHorizontal: 14, marginTop: 4, marginBottom: 4 },
+  settingsSep: { height: 1, backgroundColor: C.border, marginHorizontal: 14, marginTop: 4, marginBottom: 4 },
 
-  // Settings separator
-  settingsSep: { height: 1, backgroundColor: C.border, marginHorizontal: 14, marginTop: 6, marginBottom: 6 },
-
-  // .sb-bottom
   bottom:      { borderTopWidth: 1, borderTopColor: C.border, padding: 8 },
-  profileBtn:  { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 10 },
-  avatar:      { width: 28, height: 28, backgroundColor: 'rgba(201,168,76,0.12)', borderWidth: 1, borderColor: C.borderH, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  avatarTxt:   { fontFamily: "'Courier Prime', monospace", fontSize: 13, color: C.gold, fontWeight: '700' },
-  profileName: { flex: 1, fontFamily: "'Courier Prime', monospace", fontSize: 14, color: C.text },
+  profileBtn:  { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, paddingHorizontal: 8 },
+  avatar:      { width: 26, height: 26, backgroundColor: 'rgba(76,175,124,0.1)', borderWidth: 1, borderColor: 'rgba(76,175,124,0.28)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  avatarTxt:   { fontFamily: F.mono, fontSize: 11, color: C.gold, fontWeight: '700' },
+  profileName: { flex: 1, fontFamily: F.mono, fontSize: 12, color: C.text2 },
 });

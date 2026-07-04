@@ -179,11 +179,11 @@ export default function WaterTrackerScreen() {
 
   // Hydration insight
   function insight() {
-    if (pct >= 100) return '💧 Fully hydrated today. Excellent!';
-    if (pct >= 75)  return '👍 Almost there — one more glass!';
-    if (pct >= 50)  return '💡 Halfway through your goal.';
+    if (pct >= 100) return 'Fully hydrated today. Excellent!';
+    if (pct >= 75)  return 'Almost there — one more glass!';
+    if (pct >= 50)  return 'Halfway through your goal.';
     if (pct >= 25)  return '⚠️ Keep sipping — you\'re behind.';
-    return '🚨 Start hydrating — you need more water.';
+    return 'Start hydrating — you need more water.';
   }
 
   const WATER_COLOR = '#42A5F5';
