@@ -72,11 +72,15 @@ function setupAutoUpdater(win) {
   let autoUpdater;
   try {
     autoUpdater = require('electron-updater').autoUpdater;
-  } catch {
-    return; // electron-updater not installed yet
+  } catch (e) {
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: 'Updater missing',
+      message: 'electron-updater could not be loaded: ' + e.message,
+    }).catch(() => {});
+    return;
   }
 
-  autoUpdater.logger = null; // suppress verbose logs
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -88,6 +92,10 @@ function setupAutoUpdater(win) {
       detail: 'Downloading in the background. You will be notified when it is ready.',
       buttons: ['OK'],
     }).catch(() => {});
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    // Silently ignore — already on latest
   });
 
   autoUpdater.on('update-downloaded', () => {
@@ -104,12 +112,26 @@ function setupAutoUpdater(win) {
     }).catch(() => {});
   });
 
-  // Fail silently — no internet, server down, etc.
-  autoUpdater.on('error', () => {});
+  autoUpdater.on('error', (err) => {
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: 'Update Check Failed',
+      message: 'Could not check for updates.',
+      detail: err ? err.message : 'Unknown error',
+      buttons: ['OK'],
+    }).catch(() => {});
+  });
 
-  // Check 5 seconds after launch so it doesn't delay startup
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {});
+    autoUpdater.checkForUpdates().catch((err) => {
+      dialog.showMessageBox(win, {
+        type: 'error',
+        title: 'Update Check Failed',
+        message: 'checkForUpdates threw an error.',
+        detail: err ? err.message : 'Unknown error',
+        buttons: ['OK'],
+      }).catch(() => {});
+    });
   }, 5000);
 }
 
