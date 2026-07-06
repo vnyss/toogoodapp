@@ -14,15 +14,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check if version changed
+        id: check
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          try {
+            $latest = (Invoke-RestMethod -Uri "https://api.github.com/repos/vnyss/toogoodapp/releases/latest" -Headers @{ Authorization = "token $env:GITHUB_TOKEN"; "User-Agent" = "CI" }).tag_name
+          } catch { $latest = "" }
+          if ("v$version" -eq $latest) {
+            Write-Host "Version v$version already released — skipping build."
+            echo "skip=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "New version v$version (latest is $latest) — building."
+            echo "skip=false" >> $env:GITHUB_OUTPUT
+          }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip == 'false'
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
+        if: steps.check.outputs.skip == 'false'
         run: npm ci
 
       - name: Create and push version tag
+        if: steps.check.outputs.skip == 'false'
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
@@ -35,26 +56,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Delete any existing releases for this version
-        shell: pwsh
-        run: |
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          $tag = "v$version"
-          $headers = @{ Authorization = "token $env:GITHUB_TOKEN"; "User-Agent" = "CI" }
-          $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/vnyss/toogoodapp/releases" -Headers $headers
-          foreach ($r in $releases) {
-            if ($r.tag_name -eq $tag) {
-              Write-Host "Deleting release $($r.id) for $tag"
-              Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/vnyss/toogoodapp/releases/$($r.id)" -Headers $headers
-            }
-          }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build web bundle
+        if: steps.check.outputs.skip == 'false'
         run: npm run build:web
 
       - name: Build & publish Windows installer
+        if: steps.check.outputs.skip == 'false'
         run: npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
