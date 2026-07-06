@@ -83,10 +83,15 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "identity": null,
+      "artifactName": "TooGood-Setup.dmg"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "deb",
+      "icon": "assets/icon.png",
+      "artifactName": "TooGood-Setup.deb",
+      "category": "Utility"
     }
   }
 }
