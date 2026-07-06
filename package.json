@@ -45,7 +45,6 @@
   "build": {
     "appId": "com.toogood.desktop",
     "productName": "Too Good",
-    "electronDist": "node_modules/electron/dist",
     "extraMetadata": {
       "main": "electron/main.js"
     },
