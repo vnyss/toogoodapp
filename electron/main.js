@@ -112,26 +112,11 @@ function setupAutoUpdater(win) {
     }).catch(() => {});
   });
 
-  autoUpdater.on('error', (err) => {
-    dialog.showMessageBox(win, {
-      type: 'error',
-      title: 'Update Check Failed',
-      message: 'Could not check for updates.',
-      detail: err ? err.message : 'Unknown error',
-      buttons: ['OK'],
-    }).catch(() => {});
-  });
+  // Fail silently — network issues, firewalls etc. are not actionable by the user
+  autoUpdater.on('error', () => {});
 
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      dialog.showMessageBox(win, {
-        type: 'error',
-        title: 'Update Check Failed',
-        message: 'checkForUpdates threw an error.',
-        detail: err ? err.message : 'Unknown error',
-        buttons: ['OK'],
-      }).catch(() => {});
-    });
+    autoUpdater.checkForUpdates().catch(() => {});
   }, 5000);
 }
 

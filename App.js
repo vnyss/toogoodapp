@@ -356,10 +356,19 @@ export default function App() {
       const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
 
       if (isElectron) {
-        // Desktop: always show intro/login — never auto-jump into an account.
-        // First launch shows the full feature tour; subsequent launches go straight to login.
         const introDone = await isDesktopIntroDone();
-        setScreen(introDone ? 'login' : 'desktop-intro');
+        if (!introDone) { setScreen('desktop-intro'); return; }
+        // Restore session on restart — only show login if not logged in
+        const t = await getToken();
+        if (t) {
+          const done = await isOnboardingDone();
+          if (!done) { const u = await getUser(); setUsername(u || ''); setScreen('onboarding'); return; }
+          const u = await getUser();
+          setUsername(u || '');
+          setScreen('dashboard');
+        } else {
+          setScreen('login');
+        }
         return;
       }
 
