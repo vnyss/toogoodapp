@@ -6,7 +6,7 @@ import {
 import Svg, { Path, Circle, Line, Rect, Polyline, Polygon } from 'react-native-svg';
 import { C, F, S } from '../theme';
 import { useTheme } from '../ThemeContext';
-import { getScore, leaderboard, awardXP, aiChat, fetchLogs, syncLogs, getMe, lookupBarcode } from '../api';
+import { getScore, leaderboard, awardXP, aiChat, fetchLogs, syncLogs, getMe } from '../api';
 import { getToken, getUser } from '../auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BarcodeScanner from '../components/BarcodeScanner';
@@ -1179,139 +1179,6 @@ function wxLookup(code, isDay) {
 //  MAIN DASHBOARD SCREEN
 // ─────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────
-//  SCAN RESULT MODAL  (matches #barcodeModal .scan-result in index.html)
-// ─────────────────────────────────────────────────────────────
-function MicroPill({ label, value, unit, mc }) {
-  if (!value) return null;
-  return (
-    <View style={{ alignItems: 'center', minWidth: 52 }}>
-      <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text, fontWeight: '600' }}>{value}{unit}</Text>
-      <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 2 }}>{label}</Text>
-    </View>
-  );
-}
-
-function ScanResultModal({ visible, loading, product, error, added, onAdd, onClose, onRescan, mc, accentColor }) {
-  const sm = StyleSheet.create({
-    overlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', alignItems: 'center', justifyContent: 'center', padding: 16 },
-    box:         { width: 460, maxWidth: '96%', backgroundColor: mc.surface, borderWidth: 1, borderColor: mc.border },
-    header:      { padding: 22, paddingBottom: 0 },
-    name:        { fontFamily: F.display, fontSize: 19, color: mc.text, letterSpacing: 0.5, marginBottom: 3 },
-    brand:       { fontSize: 11, color: mc.text3, fontFamily: F.mono, letterSpacing: 1.5 },
-    divider:     { height: 1, backgroundColor: mc.border, marginTop: 18 },
-    section:     { padding: 20, paddingBottom: 0 },
-    sectionLbl:  { fontFamily: F.mono, fontSize: 9, color: mc.text3, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 12 },
-    macroRow:    { flexDirection: 'row', gap: 24 },
-    macroVal:    { fontFamily: F.display, fontSize: 22, color: accentColor },
-    macroLbl:    { fontSize: 9, color: mc.text3, fontFamily: F.mono, letterSpacing: 2, textTransform: 'uppercase', marginTop: 3 },
-    microRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
-    serving:     { marginTop: 14, marginHorizontal: 20, fontSize: 11, color: mc.text3, fontFamily: F.mono, letterSpacing: 0.5 },
-    actions:     { flexDirection: 'row', gap: 10, padding: 20, paddingTop: 18 },
-    addBtn:      { flex: 1, paddingVertical: 12, backgroundColor: accentColor, alignItems: 'center' },
-    addBtnTxt:   { fontFamily: F.mono, fontSize: 11, color: '#060606', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
-    closeBtn:    { paddingVertical: 12, paddingHorizontal: 18, borderWidth: 1, borderColor: mc.border, alignItems: 'center' },
-    closeBtnTxt: { fontFamily: F.mono, fontSize: 11, color: mc.text2, letterSpacing: 2, textTransform: 'uppercase' },
-    msg:         { fontSize: 13, color: mc.text2, fontFamily: F.mono, textAlign: 'center', marginVertical: 28, lineHeight: 20, padding: 20 },
-    doneMsg:     { fontSize: 13, color: '#4CAF7C', fontFamily: F.mono, letterSpacing: 0.5 },
-  });
-
-  const hasMicros = product && (product.fiber || product.sugar || product.sodium || product.vitC || product.vitD || product.calcium || product.iron || product.potassium);
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={sm.overlay}>
-        <View style={sm.box}>
-
-          {loading && (
-            <View style={{ alignItems: 'center', padding: 32 }}>
-              <ActivityIndicator color={accentColor} size="large" />
-              <Text style={sm.msg}>Looking up product…</Text>
-            </View>
-          )}
-
-          {!loading && error && (
-            <>
-              <Text style={sm.msg}>{error}</Text>
-              <View style={sm.actions}>
-                <TouchableOpacity style={sm.addBtn} onPress={onRescan}><Text style={sm.addBtnTxt}>Try again</Text></TouchableOpacity>
-                <TouchableOpacity style={sm.closeBtn} onPress={onClose}><Text style={sm.closeBtnTxt}>Close</Text></TouchableOpacity>
-              </View>
-            </>
-          )}
-
-          {!loading && !error && product && !added && (
-            <>
-              {/* Name + brand */}
-              <View style={sm.header}>
-                <Text style={sm.name}>{product.name}</Text>
-                {!!product.brand && <Text style={sm.brand}>{product.brand.toUpperCase()}</Text>}
-              </View>
-
-              <View style={sm.divider} />
-
-              {/* Macros */}
-              <View style={sm.section}>
-                <Text style={sm.sectionLbl}>Macronutrients (per 100g)</Text>
-                <View style={sm.macroRow}>
-                  <View><Text style={sm.macroVal}>{product.calories}</Text><Text style={sm.macroLbl}>Kcal</Text></View>
-                  <View><Text style={sm.macroVal}>{product.protein}g</Text><Text style={sm.macroLbl}>Protein</Text></View>
-                  <View><Text style={sm.macroVal}>{product.carbs}g</Text><Text style={sm.macroLbl}>Carbs</Text></View>
-                  <View><Text style={sm.macroVal}>{product.fat}g</Text><Text style={sm.macroLbl}>Fat</Text></View>
-                </View>
-              </View>
-
-              {/* Micros — only render rows that have data */}
-              {hasMicros && (
-                <>
-                  <View style={[sm.divider, { marginTop: 18 }]} />
-                  <View style={sm.section}>
-                    <Text style={sm.sectionLbl}>Additional nutrition</Text>
-                    <View style={sm.microRow}>
-                      <MicroPill label="Fiber"     value={product.fiber}     unit="g"   mc={mc} />
-                      <MicroPill label="Sugar"     value={product.sugar}     unit="g"   mc={mc} />
-                      <MicroPill label="Sodium"    value={product.sodium}    unit="mg"  mc={mc} />
-                      <MicroPill label="Vit C"     value={product.vitC}      unit="mg"  mc={mc} />
-                      <MicroPill label="Vit D"     value={product.vitD}      unit="μg"  mc={mc} />
-                      <MicroPill label="Calcium"   value={product.calcium}   unit="mg"  mc={mc} />
-                      <MicroPill label="Iron"      value={product.iron}      unit="mg"  mc={mc} />
-                      <MicroPill label="Potassium" value={product.potassium} unit="mg"  mc={mc} />
-                      <MicroPill label="Magnesium" value={product.magnesium} unit="mg"  mc={mc} />
-                      <MicroPill label="Zinc"      value={product.zinc}      unit="mg"  mc={mc} />
-                    </View>
-                  </View>
-                </>
-              )}
-
-              <Text style={sm.serving}>Serving size: {product.serving}</Text>
-
-              <View style={sm.actions}>
-                <TouchableOpacity style={sm.addBtn} onPress={onAdd}><Text style={sm.addBtnTxt}>Add to Today's Log</Text></TouchableOpacity>
-                <TouchableOpacity style={sm.closeBtn} onPress={onClose}><Text style={sm.closeBtnTxt}>Close</Text></TouchableOpacity>
-              </View>
-            </>
-          )}
-
-          {!loading && added && (
-            <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 28, justifyContent: 'center', paddingHorizontal: 20 }}>
-                <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#4CAF7C" strokeWidth={2.5} strokeLinecap="round">
-                  <Polyline points="20 6 9 17 4 12" />
-                </Svg>
-                <Text style={sm.doneMsg}>Added to today's log</Text>
-              </View>
-              <View style={sm.actions}>
-                <TouchableOpacity style={sm.addBtn} onPress={onRescan}><Text style={sm.addBtnTxt}>Scan another</Text></TouchableOpacity>
-                <TouchableOpacity style={sm.closeBtn} onPress={onClose}><Text style={sm.closeBtnTxt}>Close</Text></TouchableOpacity>
-              </View>
-            </>
-          )}
-
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 export default function DashboardScreen({ navigation }) {
   const { mc, accentColor, fontSize, borderRadius, weatherEffects } = useTheme();
   const [user,     setUser]     = useState('');
@@ -1326,60 +1193,34 @@ export default function DashboardScreen({ navigation }) {
   const [coachItems,  setCoachItems]  = useState([]);
   const [heroStats,   setHeroStats]   = useState(null); // { kcal, target, protein, steps }
 
-  // Scan Barcode (matches website's openBarcodeScanner — opens right here, no navigation)
   const [showScanner, setShowScanner] = useState(false);
-  const [scanLoading, setScanLoading] = useState(false);
-  const [scanProduct, setScanProduct] = useState(null);
-  const [scanError,   setScanError]   = useState('');
-  const [scanAdded,   setScanAdded]   = useState(false);
   const [logRefresh,  setLogRefresh]  = useState(0);
 
-  function openScanner() {
-    setScanProduct(null);
-    setScanError('');
-    setScanAdded(false);
-    setShowScanner(true);
-  }
-
-  async function handleScanned(code) {
-    setShowScanner(false);
-    setScanLoading(true);
-    setScanError('');
-    try {
-      const p = await lookupBarcode(code);
-      setScanProduct(p);
-    } catch {
-      setScanError('Could not find that product. Try another barcode.');
-    } finally {
-      setScanLoading(false);
-    }
-  }
-
-  async function addScannedToLog() {
-    if (!scanProduct || !user) return;
+  async function addScannedToLog(p) {
+    if (!p || !user) return;
     const key = `toogood_daily_logs_${user}`;
     const raw = await AsyncStorage.getItem(key);
     const logs = raw ? JSON.parse(raw) : [];
     const idx = logs.findIndex(l => l.date === todayISO());
     const food = {
-      name:     scanProduct.brand ? `${scanProduct.name} (${scanProduct.brand})` : scanProduct.name,
-      serving:  scanProduct.serving,
-      calories: scanProduct.calories,
-      protein:  scanProduct.protein,
-      carbs:    scanProduct.carbs,
-      fat:      scanProduct.fat,
-      fiber:     scanProduct.fiber,
-      sugar:     scanProduct.sugar,
-      sodium:    scanProduct.sodium,
-      vitA:      scanProduct.vitA,
-      vitC:      scanProduct.vitC,
-      vitD:      scanProduct.vitD,
-      vitB12:    scanProduct.vitB12,
-      iron:      scanProduct.iron,
-      calcium:   scanProduct.calcium,
-      potassium: scanProduct.potassium,
-      magnesium: scanProduct.magnesium,
-      zinc:      scanProduct.zinc,
+      name:      p.brand ? `${p.name} (${p.brand})` : p.name,
+      serving:   p.serving,
+      calories:  p.calories,
+      protein:   p.protein,
+      carbs:     p.carbs,
+      fat:       p.fat,
+      fiber:     p.fiber,
+      sugar:     p.sugar,
+      sodium:    p.sodium,
+      vitA:      p.vitA,
+      vitC:      p.vitC,
+      vitD:      p.vitD,
+      vitB12:    p.vitB12,
+      iron:      p.iron,
+      calcium:   p.calcium,
+      potassium: p.potassium,
+      magnesium: p.magnesium,
+      zinc:      p.zinc,
     };
     let entry = idx >= 0 ? logs[idx] : { date: todayISO(), weight: '', steps: '', workout: '', hunger: 5, energy: 5, foods: [], calories: 0, protein: 0, carbs: 0, fat: 0 };
     entry = { ...entry, foods: [...(entry.foods || []), food] };
@@ -1389,7 +1230,6 @@ export default function DashboardScreen({ navigation }) {
     await AsyncStorage.setItem(key, JSON.stringify(logs));
     syncLogs([entry]).catch(() => {});
     awardXP('food_log').catch(() => {});
-    setScanAdded(true);
     setLogRefresh(r => r + 1);
   }
 
@@ -1715,7 +1555,7 @@ export default function DashboardScreen({ navigation }) {
 
         {/* Scan Barcode button — .hero-top / .hero-scan-btn */}
         <View style={st.heroTop}>
-          <TouchableOpacity style={st.scanBtn} onPress={openScanner}>
+          <TouchableOpacity style={st.scanBtn} onPress={() => setShowScanner(true)}>
             <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={mc.text2} strokeWidth={1.8} strokeLinecap="round">
               <Rect x="1" y="4" width="22" height="16" />
               <Line x1="1" y1="10" x2="23" y2="10" />
@@ -1968,20 +1808,7 @@ export default function DashboardScreen({ navigation }) {
       </View>
     </ScrollView>
 
-    <BarcodeScanner visible={showScanner} onScanned={handleScanned} onClose={() => setShowScanner(false)} />
-
-    <ScanResultModal
-      visible={scanLoading || !!scanProduct || !!scanError}
-      loading={scanLoading}
-      product={scanProduct}
-      error={scanError}
-      added={scanAdded}
-      onAdd={addScannedToLog}
-      onClose={() => { setScanProduct(null); setScanError(''); setScanAdded(false); }}
-      onRescan={() => { setScanProduct(null); setScanError(''); setScanAdded(false); setShowScanner(true); }}
-      mc={mc}
-      accentColor={accentColor}
-    />
+    <BarcodeScanner visible={showScanner} onClose={() => setShowScanner(false)} onAdd={addScannedToLog} />
     </>
   );
 }
