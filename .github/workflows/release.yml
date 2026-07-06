@@ -140,6 +140,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Linux build dependencies
+        run: sudo apt-get install -y fakeroot dpkg-dev libopenjp2-7
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -151,7 +154,7 @@ jobs:
       - name: Build web bundle
         run: npm run build:web
 
-      - name: Build & publish Linux deb
+      - name: Build & publish Linux AppImage
         run: npx electron-builder --linux --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

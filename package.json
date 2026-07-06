@@ -1,6 +1,6 @@
 {
   "name": "toogoodapp",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Too Good — health and fitness desktop app",
   "author": "Too Good",
   "main": "node_modules/expo/AppEntry.js",
@@ -88,10 +88,9 @@
       "artifactName": "TooGood-Setup.dmg"
     },
     "linux": {
-      "target": "deb",
+      "target": "AppImage",
       "icon": "assets/icon.png",
-      "artifactName": "TooGood-Setup.deb",
-      "category": "Utility"
+      "artifactName": "TooGood-Setup.AppImage"
     }
   }
 }
