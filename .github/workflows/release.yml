@@ -66,21 +66,41 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Remove incomplete duplicate releases
+      - name: Consolidate blockmap into main release
         if: steps.check.outputs.skip == 'false'
         shell: pwsh
         run: |
           $version = "v$((Get-Content package.json | ConvertFrom-Json).version)"
-          $headers = @{ Authorization = "token $env:GITHUB_TOKEN"; "User-Agent" = "CI" }
-          $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/vnyss/toogoodapp/releases" -Headers $headers
+          $h = @{ Authorization = "token $env:GITHUB_TOKEN"; "User-Agent" = "CI"; Accept = "application/vnd.github+json" }
+          Start-Sleep -Seconds 5
+          $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/vnyss/toogoodapp/releases" -Headers $h
+
+          $main  = $null; $extra = $null
           foreach ($r in $releases) {
-            if ($r.tag_name -eq $version) {
-              $hasLatestYml = ($r.assets | Where-Object { $_.name -eq "latest.yml" }).Count -gt 0
-              if (-not $hasLatestYml) {
-                Write-Host "Deleting incomplete release $($r.id) for $version"
-                Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/vnyss/toogoodapp/releases/$($r.id)" -Headers $headers
-              }
+            if ($r.tag_name -ne $version) { continue }
+            if (($r.assets | Where-Object { $_.name -eq "latest.yml" }).Count -gt 0) { $main  = $r }
+            else                                                                       { $extra = $r }
+          }
+
+          if ($main -and $extra) {
+            Write-Host "Main=$($main.id)  Extra=$($extra.id)"
+            $bm = $extra.assets | Where-Object { $_.name -like "*.blockmap" } | Select-Object -First 1
+            if ($bm) {
+              Write-Host "Moving $($bm.name) to main release..."
+              $tmp = Join-Path $env:TEMP $bm.name
+              $dlH = @{ Authorization = "token $env:GITHUB_TOKEN"; Accept = "application/octet-stream"; "User-Agent" = "CI" }
+              Invoke-WebRequest -Uri $bm.url -Headers $dlH -OutFile $tmp
+              $up = ($main.upload_url -replace '\{.*\}','') + "?name=$([uri]::EscapeDataString($bm.name))"
+              $ulH = @{ Authorization = "token $env:GITHUB_TOKEN"; "User-Agent" = "CI"; "Content-Type" = "application/octet-stream" }
+              Invoke-RestMethod -Method Post -Uri $up -Headers $ulH -InFile $tmp
+              Write-Host "Blockmap uploaded — differential updates now enabled."
             }
+            Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/vnyss/toogoodapp/releases/$($extra.id)" -Headers $h
+            Write-Host "Extra release deleted."
+          } elseif (-not $main) {
+            Write-Host "WARNING: no complete release found for $version"
+          } else {
+            Write-Host "No extra release — nothing to consolidate."
           }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
