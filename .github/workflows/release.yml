@@ -4,7 +4,7 @@ name: Build & Release
 # a GitHub release automatically. No manual release creation needed.
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
   build:
