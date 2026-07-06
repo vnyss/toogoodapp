@@ -1,7 +1,5 @@
 name: Build & Release
 
-# Runs on every push to master — builds the installer and publishes
-# a GitHub release automatically. No manual release creation needed.
 on:
   push:
     branches: [main]
@@ -34,6 +32,22 @@ jobs:
           if (git tag -l $tag) { git tag -d $tag }
           git tag $tag
           git push origin $tag --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete any existing releases for this version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "v$version"
+          $headers = @{ Authorization = "token $env:GITHUB_TOKEN"; "User-Agent" = "CI" }
+          $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/vnyss/toogoodapp/releases" -Headers $headers
+          foreach ($r in $releases) {
+            if ($r.tag_name -eq $tag) {
+              Write-Host "Deleting release $($r.id) for $tag"
+              Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/vnyss/toogoodapp/releases/$($r.id)" -Headers $headers
+            }
+          }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
