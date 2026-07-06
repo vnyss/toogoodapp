@@ -10,12 +10,14 @@ import { BrowserMultiFormatReader } from '@zxing/browser';
 import { lookupBarcode } from '../api';
 
 const CAM_H = 260;
+const POLL_MS = 300;
 
 export default function BarcodeScanner({ visible, onClose, onAdd }) {
   const { mc, accentColor } = useTheme();
 
   const videoRef     = useRef(null);
-  const controlsRef  = useRef(null);
+  const intervalRef  = useRef(null);
+  const streamRef    = useRef(null);
   const fileInputRef = useRef(null);
   const scanLineY    = useRef(new Animated.Value(0)).current;
   const handledRef   = useRef(false);
@@ -44,7 +46,7 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
     return () => anim.stop();
   }, [visible, restartKey]);
 
-  // Camera lifecycle
+  // Camera lifecycle — manual getUserMedia + polling, same as the website
   useEffect(() => {
     if (!visible) return;
 
@@ -58,56 +60,70 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
 
     let cancelled = false;
 
+    function stopCamera() {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+      if (videoRef.current) { videoRef.current.srcObject = null; }
+    }
+
     async function start() {
-      try {
-        const probe = await navigator.mediaDevices.getUserMedia({ video: true });
-        probe.getTracks().forEach(t => t.stop());
-        if (cancelled) return;
+      const constraints = [
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+        { video: { width: { ideal: 1280 }, height: { ideal: 720 } } },
+        { video: true },
+      ];
 
-        const reader  = new BrowserMultiFormatReader();
-        const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-        if (devices.length === 0) {
-          if (!cancelled) { setCameraFail(true); setPhase('error'); setErrorMsg('No camera found.'); }
-          return;
-        }
-        const camera = devices.find(d => /back|environment|rear/i.test(d.label)) || devices[0];
-        if (!cancelled) setHint('Auto-scanning… point camera at any barcode.');
-
-        const controls = await reader.decodeFromVideoDevice(
-          camera.deviceId,
-          videoRef.current,
-          async (result) => {
-            if (result && !cancelled && !handledRef.current) {
-              handledRef.current = true;
-              controls.stop();
-              controlsRef.current = null;
-              await doLookup(result.getText());
-            }
-          }
-        );
-        if (cancelled) { controls.stop(); return; }
-        controlsRef.current = controls;
-      } catch (e) {
-        if (cancelled) return;
-        setCameraFail(true);
-        setPhase('error');
-        setErrorMsg(
-          e?.name === 'NotAllowedError'
-            ? 'Camera access blocked. Allow camera in system settings, then retry.'
-            : 'Could not start camera.'
-        );
+      let stream = null;
+      for (const c of constraints) {
+        try { stream = await navigator.mediaDevices.getUserMedia(c); break; } catch {}
       }
+
+      if (!stream || cancelled) {
+        if (!cancelled) {
+          setCameraFail(true);
+          setPhase('error');
+          setErrorMsg('Camera access blocked. Allow camera in system settings, then retry.');
+        }
+        return;
+      }
+
+      streamRef.current = stream;
+      const video = videoRef.current;
+      if (!video || cancelled) { stopCamera(); return; }
+
+      video.srcObject = stream;
+      try { await video.play(); } catch {}
+      if (cancelled) { stopCamera(); return; }
+
+      setHint('Auto-scanning… point camera at any barcode.');
+
+      const reader = new BrowserMultiFormatReader();
+
+      intervalRef.current = setInterval(async () => {
+        if (handledRef.current || cancelled) return;
+        if (!video.readyState || video.readyState < 2) return;
+        try {
+          const result = await reader.decodeFromVideoElement(video);
+          if (result && !handledRef.current && !cancelled) {
+            handledRef.current = true;
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+            await doLookup(result.getText());
+          }
+        } catch {} // NotFoundException thrown when no barcode visible — expected
+      }, POLL_MS);
     }
 
     start();
     return () => {
       cancelled = true;
-      if (controlsRef.current) { controlsRef.current.stop(); controlsRef.current = null; }
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     };
   }, [visible, restartKey]);
 
   async function doLookup(code) {
-    if (controlsRef.current) { controlsRef.current.stop(); controlsRef.current = null; }
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     setPhase('loading');
     setHint('Found barcode ' + code + ' — looking up product…');
     try {
@@ -128,22 +144,15 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
     }
     setCapturing(true);
     try {
-      const canvas = document.createElement('canvas');
-      canvas.width  = video.videoWidth  || 640;
-      canvas.height = video.videoHeight || 480;
-      canvas.getContext('2d').drawImage(video, 0, 0);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      const reader  = new BrowserMultiFormatReader();
-      const result  = await reader.decodeFromImageUrl(dataUrl);
+      const reader = new BrowserMultiFormatReader();
+      const result = await reader.decodeFromVideoElement(video);
       if (result && !handledRef.current) {
         handledRef.current = true;
-        if (controlsRef.current) { controlsRef.current.stop(); controlsRef.current = null; }
+        if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
         await doLookup(result.getText());
-      } else {
-        setHint('No barcode detected — adjust angle and try again.');
       }
     } catch {
-      setHint('No barcode detected — adjust angle and try again.');
+      setHint('No barcode detected — hold steady and try again.');
     } finally {
       setCapturing(false);
     }
@@ -159,7 +168,7 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
       const result = await reader.decodeFromImageUrl(url);
       if (result) {
         handledRef.current = true;
-        if (controlsRef.current) { controlsRef.current.stop(); controlsRef.current = null; }
+        if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
         await doLookup(result.getText());
       } else {
         setPhase('error');
@@ -188,7 +197,8 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
   }
 
   function scanAnother() {
-    if (controlsRef.current) { controlsRef.current.stop(); controlsRef.current = null; }
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     handledRef.current = false;
     setRestartKey(k => k + 1);
   }
@@ -242,10 +252,9 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
             )}
           </View>
 
-          {/* ── Controls row (below camera, visible during scanning) ── */}
+          {/* ── Controls row (below camera) ── */}
           {phase === 'scanning' && (
             <View style={s.controlsRow}>
-              {/* + Photo import button */}
               <TouchableOpacity
                 style={s.photoBtn}
                 onPress={() => fileInputRef.current?.click()}
@@ -264,9 +273,8 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
                 )}
               </TouchableOpacity>
 
-              {/* Capture & Scan button */}
               <TouchableOpacity
-                style={[s.captureBtn, capturing && s.captureBtnDisabled]}
+                style={[s.captureBtn, (capturing || cameraFail) && s.captureBtnDisabled]}
                 onPress={captureFrame}
                 disabled={capturing || cameraFail}
               >
@@ -286,7 +294,7 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
             </View>
           )}
 
-          {/* ── Hint / Loading (scanning & loading phases) ── */}
+          {/* ── Hint / Loading ── */}
           {(phase === 'scanning' || phase === 'loading') && (
             <View style={s.hintRow}>
               {phase === 'loading' && (
@@ -319,9 +327,7 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
                   <Text style={s.macroLbl}>Fat</Text>
                 </View>
               </View>
-              <Text style={s.serving}>
-                Serving size: {product.serving} — values shown per 100g
-              </Text>
+              <Text style={s.serving}>Serving size: {product.serving} — values shown per 100g</Text>
               <View style={s.actions}>
                 <TouchableOpacity style={s.primaryBtn} onPress={doAdd}>
                   <Text style={s.primaryBtnTxt}>Add to Today's Log</Text>
@@ -333,7 +339,7 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
             </View>
           )}
 
-          {/* ── Added confirmation ── */}
+          {/* ── Added ── */}
           {phase === 'added' && (
             <View style={s.resultSection}>
               <View style={s.addedRow}>
@@ -376,10 +382,7 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
                         </>
                     }
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[s.secondaryBtn, { marginBottom: 10 }]}
-                    onPress={scanAnother}
-                  >
+                  <TouchableOpacity style={[s.secondaryBtn, { marginBottom: 10 }]} onPress={scanAnother}>
                     <Text style={s.secondaryBtnTxt}>Retry camera</Text>
                   </TouchableOpacity>
                 </>
@@ -413,20 +416,17 @@ function makeStyles(mc, accentColor) {
     overlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center', padding: 20 },
     box:         { width: 480, maxWidth: '100%', backgroundColor: mc.surface, borderWidth: 1, borderColor: mc.borderH },
 
-    // Header
     header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18, paddingHorizontal: 22, borderBottomWidth: 1, borderBottomColor: mc.border },
     headerTitle: { fontFamily: F.display, fontSize: 17, color: mc.text, letterSpacing: 0.4 },
     closeBtn:    { width: 28, height: 28, borderWidth: 1, borderColor: mc.border, alignItems: 'center', justifyContent: 'center' },
     closeTxt:    { color: mc.text2, fontSize: 16, lineHeight: 20 },
 
-    // Camera
     camArea:       { width: '100%', height: CAM_H, backgroundColor: '#000', overflow: 'hidden', position: 'relative' },
     scanFrame:     { position: 'absolute', top: '20%', left: '20%', right: '20%', bottom: '20%', borderWidth: 1.5, borderColor: accentColor },
     scanLine:      { position: 'absolute', left: '20%', right: '20%', height: 1, backgroundColor: accentColor },
     camFailOverlay:{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111', gap: 10 },
     camFailTxt:    { fontSize: 12, color: 'rgba(255,255,255,0.3)', fontFamily: F.mono, letterSpacing: 0.5 },
 
-    // Controls row (below camera)
     controlsRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: mc.border, gap: 10 },
     photoBtn:       { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: mc.border, paddingVertical: 8, paddingHorizontal: 14 },
     photoBtnTxt:    { fontFamily: F.mono, fontSize: 11, color: mc.text2, letterSpacing: 0.5 },
@@ -434,11 +434,9 @@ function makeStyles(mc, accentColor) {
     captureBtnDisabled: { opacity: 0.6 },
     captureBtnTxt:  { fontFamily: F.mono, fontSize: 11, color: '#060606', fontWeight: '700', letterSpacing: 0.8 },
 
-    // Hint
     hintRow:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 12 },
     hintTxt:     { fontSize: 12, color: mc.text2, fontStyle: 'italic', fontFamily: F.mono, letterSpacing: 0.4, flex: 1 },
 
-    // Result
     resultSection: { padding: 20, paddingHorizontal: 22, borderTopWidth: 1, borderTopColor: mc.border },
     productName:   { fontFamily: F.display, fontSize: 18, color: mc.text, marginBottom: 4, letterSpacing: 0.3 },
     brand:         { fontSize: 12, color: mc.text2, marginBottom: 16, fontFamily: F.mono, letterSpacing: 0.3 },
@@ -453,11 +451,9 @@ function makeStyles(mc, accentColor) {
     secondaryBtn:  { flex: 1, paddingVertical: 11, borderWidth: 1, borderColor: mc.border, alignItems: 'center' },
     secondaryBtnTxt:{ fontFamily: F.mono, fontSize: 12, letterSpacing: 1, color: mc.text2 },
 
-    // Added
     addedRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 20, justifyContent: 'center' },
     addedTxt:    { fontSize: 13, color: '#4CAF7C', fontFamily: F.mono, letterSpacing: 0.5 },
 
-    // Error
     errorSection:{ padding: 18, paddingHorizontal: 22, borderTopWidth: 1, borderTopColor: mc.border },
     errorMsg:    { fontSize: 13, color: '#e57373', marginBottom: 12, fontFamily: F.mono, letterSpacing: 0.3 },
     manualLabel: { fontSize: 12, color: mc.text2, marginBottom: 6, fontFamily: F.mono },
