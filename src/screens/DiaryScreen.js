@@ -41,14 +41,6 @@ async function apiP(path, body) {
   return r.json();
 }
 
-/* ─── diary I/O abstraction (local for Electron, server for web) ─── */
-const diary = {
-  getLock:   ()           => IS_ELECTRON ? local.getDiaryLock()              : apiG('/perfect/api/diary/lock'),
-  setLock:   (body)       => IS_ELECTRON ? local.setDiaryLock(body)          : apiP('/perfect/api/diary/lock', body),
-  getEntry:  (date)       => IS_ELECTRON ? local.getDiaryEntry(date)         : apiG(`/perfect/api/diary/entry?date=${date}`),
-  saveEntry: (date, text) => IS_ELECTRON ? local.saveDiaryEntry(date, text)  : apiP('/perfect/api/diary/entry', { date, entry: text }),
-};
-
 /* ─── icons ─── */
 function IconLock({ size = 11, color = C.text3 }) {
   return (
@@ -235,7 +227,7 @@ function PinRow({ pinId, onComplete }) {
   return (
     <View
       ref={containerRef}
-      style={{ flexDirection: 'row', justifyContent: 'center', height: 96, alignItems: 'flex-end' }}
+      style={{ flexDirection: 'row', justifyContent: 'center', height: 124, alignItems: 'flex-end' }}
     />
   );
 }
@@ -263,9 +255,19 @@ export default function DiaryScreen({ navigation }) {
   const [acctPwd,       setAcctPwd]      = useState('');
   const [acctPwdErr,    setAcctPwdErr]   = useState('');
   const [acctPwdLoad,   setAcctPwdLoad]  = useState(false);
-  const micRef    = useRef(null);
-  const saveTimer = useRef(null);
-  const entryRef  = useRef(entry);
+  const [pendingAction, setPendingAction] = useState('change_pin'); // 'change_pin' | 'reset_lock'
+  const micRef       = useRef(null);
+  const saveTimer    = useRef(null);
+  const entryRef     = useRef(entry);
+  const serverDiaryRef = useRef(false); // true when Electron should route diary lock to server
+
+  // diary I/O — local for Electron (unless server lock detected), server for web
+  const diary = {
+    getLock:   ()        => (IS_ELECTRON && !serverDiaryRef.current) ? local.getDiaryLock()             : apiG('/perfect/api/diary/lock'),
+    setLock:   (body)    => (IS_ELECTRON && !serverDiaryRef.current) ? local.setDiaryLock(body)         : apiP('/perfect/api/diary/lock', body),
+    getEntry:  (d)       => IS_ELECTRON ? local.getDiaryEntry(d)                                        : apiG(`/perfect/api/diary/entry?date=${d}`),
+    saveEntry: (d, text) => IS_ELECTRON ? local.saveDiaryEntry(d, text)                                 : apiP('/perfect/api/diary/entry', { date: d, entry: text }),
+  };
 
   // Keep entryRef in sync so async callbacks use latest value
   useEffect(() => { entryRef.current = entry; }, [entry]);
@@ -275,7 +277,17 @@ export default function DiaryScreen({ navigation }) {
   /* ─── init ─── */
   async function init() {
     try {
-      const lock = await diary.getLock();
+      let lock = IS_ELECTRON ? (await local.getDiaryLock()) : (await apiG('/perfect/api/diary/lock'));
+      // Electron: if no local lock setup, check server (user may have configured it via webapp)
+      if (IS_ELECTRON && !lock?.setup_done) {
+        try {
+          const serverLock = await apiG('/perfect/api/diary/lock');
+          if (serverLock?.setup_done) {
+            serverDiaryRef.current = true;
+            lock = serverLock;
+          }
+        } catch {}
+      }
       setLockEnabled(!!lock.enabled);
       if (!lock.setup_done)   { setView('setup'); }
       else if (lock.enabled)  { setView('locked'); }
@@ -388,8 +400,16 @@ export default function DiaryScreen({ navigation }) {
     setPinRowKey(k => k + 1);
   }
 
-  /* ─── account password check before changing PIN ─── */
+  /* ─── account password check before changing PIN or resetting lock ─── */
   function startChangePIN() {
+    setPendingAction('change_pin');
+    setAcctPwd('');
+    setAcctPwdErr('');
+    setView('acctPwdCheck');
+  }
+
+  function startResetLock() {
+    setPendingAction('reset_lock');
     setAcctPwd('');
     setAcctPwdErr('');
     setView('acctPwdCheck');
@@ -403,13 +423,25 @@ export default function DiaryScreen({ navigation }) {
       if (r.valid) {
         setAcctPwd('');
         setAcctPwdErr('');
-        setSetupStep(1);
-        setPin1('');
-        setSetupHint('Enter a new 4-digit PIN');
-        setSetupErr(false);
-        setPinRowKey(k => k + 1);
-        setShowPinSetup(true);
-        setView('setup');
+        if (pendingAction === 'reset_lock') {
+          await diary.setLock({ action: 'setup', enabled: false });
+          setLockEnabled(false);
+          setShowPinSetup(false);
+          setSetupStep(1);
+          setPin1('');
+          setSetupHint('Enter a 4-digit PIN');
+          setSetupErr(false);
+          setPinRowKey(k => k + 1);
+          setView('setup');
+        } else {
+          setSetupStep(1);
+          setPin1('');
+          setSetupHint('Enter a new 4-digit PIN');
+          setSetupErr(false);
+          setPinRowKey(k => k + 1);
+          setShowPinSetup(true);
+          setView('setup');
+        }
       } else {
         setAcctPwdErr('Wrong password. Try again.');
       }
@@ -774,7 +806,9 @@ export default function DiaryScreen({ navigation }) {
         </View>
         <Text style={styles.gateTitle}>Verify your identity</Text>
         <Text style={styles.gateSub}>
-          Enter your account password to change the diary PIN.
+          {pendingAction === 'reset_lock'
+            ? 'Enter your account password to reset and clear the diary lock.'
+            : 'Enter your account password to change the diary PIN.'}
         </Text>
         <View style={{ width: '100%', maxWidth: 280, gap: 12 }}>
           <TextInput
@@ -799,7 +833,7 @@ export default function DiaryScreen({ navigation }) {
             disabled={acctPwdLoad}>
             <Text style={styles.goldBtnTxt}>{acctPwdLoad ? 'Checking...' : 'Continue'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setView('unlocked')} style={{ alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => setView(pendingAction === 'reset_lock' ? 'locked' : 'unlocked')} style={{ alignItems: 'center' }}>
             <Text style={styles.linkTxt}>Cancel</Text>
           </TouchableOpacity>
         </View>
@@ -875,7 +909,7 @@ export default function DiaryScreen({ navigation }) {
           onComplete={handleUnlockComplete}
         />
         <Text style={[styles.hint, unlockErr && { color: C.red }]}>{unlockHint || ' '}</Text>
-        <TouchableOpacity onPress={resetLock} style={{ marginTop: 4 }}>
+        <TouchableOpacity onPress={startResetLock} style={{ marginTop: 4 }}>
           <Text style={styles.linkTxt}>Forgot PIN? Reset lock</Text>
         </TouchableOpacity>
       </ScrollView>

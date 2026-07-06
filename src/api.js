@@ -17,7 +17,21 @@ const post = (path, body)  => req(path, { method: 'POST', body: JSON.stringify(b
 export const login    = (username, password) => post('/api/v1/login',    { username, password });
 export const register = (body)              => post('/api/v1/register', body);
 export const logout = ()                   => post('/api/v1/logout', {});
-export const getMe  = ()                   => IS_ELECTRON ? local.getMe() : get('/api/v1/me');
+export async function getMe() {
+  if (!IS_ELECTRON) return get('/api/v1/me');
+  const localData = await local.getMe();
+  // If Electron has profile data locally, use it
+  if (localData?.ok && (localData.weight_kg || localData.age || localData.full_name)) return localData;
+  // Otherwise pull from server and cache locally for future loads
+  try {
+    const serverData = await get('/api/v1/me');
+    if (serverData?.username) {
+      await local.saveProfile(serverData);
+      return { ok: true, ...serverData };
+    }
+  } catch {}
+  return localData;
+}
 
 // Score / XP
 export const getScore   = ()       => get('/perfect/api/score');

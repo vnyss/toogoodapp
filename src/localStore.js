@@ -9,7 +9,10 @@ import { getUser } from './auth';
 // ── Profile ──────────────────────────────────────────────────────────────────
 export async function saveProfile(data) {
   const u = await getUser();
-  await AsyncStorage.setItem(`tg_profile_${u}`, JSON.stringify(data));
+  const key = `tg_profile_${u}`;
+  const existing = await AsyncStorage.getItem(key);
+  const prev = existing ? JSON.parse(existing) : {};
+  await AsyncStorage.setItem(key, JSON.stringify({ ...prev, ...data }));
   return { ok: true };
 }
 

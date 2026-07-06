@@ -12,7 +12,7 @@ const TABS = [
 
 export default function ScheduleScreen({ navigation }) {
   const { mc } = useTheme();
-  const [tab, setTab] = useState('calendar');
+  const [tab, setTab] = useState('exercise');
   return (
     <View style={{ flex: 1, backgroundColor: mc.bg }}>
       <HubTabs tabs={TABS} active={tab} onChange={setTab} />

@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { F } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getUser } from '../auth';
+import { IS_ELECTRON } from '../config';
 import { StatBar, BarChart } from '../components/Charts';
 
 const DAYS_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -78,7 +79,7 @@ const DEFAULT_REMINDERS = [
 
 function webNotif(title, body) {
   if (Platform.OS !== 'web' || !('Notification' in window) || Notification.permission !== 'granted') return;
-  new Notification(title, { body, icon: '/favicon.ico' });
+  try { new Notification(title, { body }); } catch {}
 }
 
 function nowHHMM() {
@@ -233,7 +234,9 @@ export default function RemindersScreen() {
         {webSupported && permission === 'denied' && (
           <View style={[s.card, { borderColor: '#E57373' + '44' }]}>
             <Text style={{ fontFamily: F.mono, fontSize: 11, color: '#E57373', lineHeight: 18 }}>
-              Notifications blocked. Open browser Settings → Site permissions → Notifications → Allow for this site.
+              {IS_ELECTRON
+                ? 'Notifications are blocked. Restart the app and click "Allow Notifications" to enable them.'
+                : 'Notifications blocked. Open browser Settings → Site permissions → Notifications → Allow for this site.'}
             </Text>
           </View>
         )}
@@ -427,8 +430,9 @@ export default function RemindersScreen() {
 
         <View style={s.card}>
           <Text style={{ fontFamily: F.mono, fontSize: 11, color: mc.text3, lineHeight: 18 }}>
-            Reminders only fire while this browser tab is open.{'\n'}
-            For persistent background alerts, use your phone's native reminder app alongside this one.
+            {IS_ELECTRON
+              ? 'Reminders fire while Too Good is open. Close the app and they pause.'
+              : "Reminders only fire while this browser tab is open.\nFor persistent background alerts, use your phone's native reminder app alongside this one."}
           </Text>
         </View>
       </View>

@@ -56,6 +56,8 @@ function createWindow() {
   }
 
   win.webContents.setWindowOpenHandler(({ url }) => {
+    // Allow blob: URLs to open in a new Electron window (PDF print dialog)
+    if (url.startsWith('blob:')) return { action: 'allow' };
     shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -123,11 +125,11 @@ function setupAutoUpdater(win) {
 app.whenReady().then(() => {
   // Grant camera/microphone permission automatically — needed for barcode scanner
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    const allow = ['media', 'camera', 'microphone', 'display-capture'];
+    const allow = ['media', 'camera', 'microphone', 'display-capture', 'notifications'];
     callback(allow.includes(permission));
   });
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => {
-    const allow = ['media', 'camera', 'microphone', 'display-capture'];
+    const allow = ['media', 'camera', 'microphone', 'display-capture', 'notifications'];
     return allow.includes(permission);
   });
 

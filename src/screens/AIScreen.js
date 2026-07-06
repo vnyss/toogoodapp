@@ -10,6 +10,7 @@ import { generalAiChat, getSessions, saveSessions, banComment, lookupBarcode, ge
 import BarcodeScanner from '../components/BarcodeScanner';
 import { getToken, getUser } from '../auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { IS_ELECTRON } from '../config';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -621,7 +622,20 @@ li{margin-bottom:6px;line-height:1.8;font-size:12.5px;color:#3a2e20}
 </body>
 </html>`;
     const blob = new Blob([html], { type: 'text/html' });
-    window.open(URL.createObjectURL(blob), '_blank');
+    const blobUrl = URL.createObjectURL(blob);
+    if (IS_ELECTRON) {
+      // Electron intercepts window.open — open blob in new window directly
+      const w = window.open(blobUrl, '_blank', 'width=900,height=700');
+      if (!w) {
+        // Fallback: trigger download so user can open manually
+        const a = document.createElement('a');
+        a.href = blobUrl; a.download = 'TooGood-Diet-Plan.html';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      }
+    } else {
+      window.open(blobUrl, '_blank');
+    }
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
   }
 
   return (

@@ -5,9 +5,11 @@ import {
 } from 'react-native';
 import { C, F } from '../theme';
 import { getMe, saveProfile, changeEmail } from '../api';
-import { getUser, clearAuth } from '../auth';
+import { getUser, clearAuth, getToken } from '../auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, ACCENT_MAP as ACCENT_MAP_FULL } from '../ThemeContext';
+import { IS_ELECTRON, API_BASE } from '../config';
+import * as local from '../localStore';
 
 // Flat map of accent key -> hex color (for local self-theming display)
 const ACCENT_MAP = Object.fromEntries(
@@ -345,6 +347,8 @@ export default function SettingsScreen({ navigation }) {
         ? Math.round((parseFloat(targetLbs) || 0) / 2.20462 * 10) / 10
         : parseFloat(targetWeight) || null;
       const r = await saveProfile({
+        full_name: name,
+        country,
         age: parseInt(age) || null,
         gender,
         weight_kg: wkg || null,
@@ -376,9 +380,8 @@ export default function SettingsScreen({ navigation }) {
     if (newPwd.length < 8)     { setPwMsg('Minimum 8 characters.'); return; }
     setPwMsg(''); setLoading(true);
     try {
-      const { getToken } = require('../auth');
       const token = await getToken();
-      const r = await fetch('http://127.0.0.1:5000/perfect/api/account/password', {
+      const r = await fetch(API_BASE + '/perfect/api/account/password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
@@ -393,9 +396,8 @@ export default function SettingsScreen({ navigation }) {
     if (!delPwd) return;
     setLoading(true);
     try {
-      const { getToken } = require('../auth');
       const token = await getToken();
-      const r = await fetch('http://127.0.0.1:5000/perfect/settings/delete-account', {
+      const r = await fetch(API_BASE + '/perfect/settings/delete-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({ password: delPwd }),
@@ -409,20 +411,24 @@ export default function SettingsScreen({ navigation }) {
   async function doSaveExercise() {
     setLoading(true);
     try {
-      const { getToken } = require('../auth');
-      const token = await getToken();
-      await fetch('http://127.0.0.1:5000/perfect/api/account/exercise-prefs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({
-          exercise_types: exTypes.join(','),
-          exercise_days_per_week: parseInt(exDays) || null,
-          rest_day: restDays.join(','),
-          session_duration: exDuration,
-          workout_time_pref: exTimePref,
-          fitness_level: fitnessLevel,
-        }),
-      });
+      const exerciseData = {
+        exercise_types: exTypes.join(','),
+        exercise_days_per_week: parseInt(exDays) || null,
+        rest_day: restDays.join(','),
+        session_duration: exDuration,
+        workout_time_pref: exTimePref,
+        fitness_level: fitnessLevel,
+      };
+      if (IS_ELECTRON) {
+        await local.saveProfile(exerciseData);
+      } else {
+        const token = await getToken();
+        await fetch(API_BASE + '/perfect/api/account/exercise-prefs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify(exerciseData),
+        });
+      }
       setMsg('Exercise preferences saved.'); flashToast('Data saved');
     } catch { setMsg('Could not reach server.'); }
     setLoading(false);
