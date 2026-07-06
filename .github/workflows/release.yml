@@ -24,6 +24,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Create and push version tag
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "v$version"
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          if (git tag -l $tag) { git tag -d $tag }
+          git tag $tag
+          git push origin $tag --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build web bundle
         run: npm run build:web
 
