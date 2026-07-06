@@ -61,7 +61,8 @@
     "publish": {
       "provider": "github",
       "owner": "vnyss",
-      "repo": "toogoodapp"
+      "repo": "toogoodapp",
+      "releaseType": "release"
     },
     "win": {
       "target": "nsis",
