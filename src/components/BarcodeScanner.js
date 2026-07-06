@@ -1,81 +1,59 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import Svg, { Path, Line, Rect, Circle } from 'react-native-svg';
+import Svg, { Path, Line, Rect, Circle, Polyline } from 'react-native-svg';
 import { C, F } from '../theme';
+import { BrowserMultiFormatReader } from '@zxing/browser';
 
-// status values: 'init' | 'scanning' | 'no-detector' | 'denied' | 'no-camera' | 'error'
+// status: 'init' | 'scanning' | 'denied' | 'no-camera' | 'error'
 
 export default function BarcodeScanner({ visible, onScanned, onClose }) {
-  const videoRef  = useRef(null);
-  const streamRef = useRef(null);
-  const rafRef    = useRef(null);
-  const [status,    setStatus]    = useState('init');
-  const [manualCode, setManualCode] = useState('');
+  const videoRef      = useRef(null);
+  const controlsRef   = useRef(null);
+  const fileInputRef  = useRef(null);
+  const [status,      setStatus]     = useState('init');
+  const [manualCode,  setManualCode] = useState('');
+  const [imgError,    setImgError]   = useState('');
+  const [imgLoading,  setImgLoading] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
     setStatus('init');
     setManualCode('');
+    setImgError('');
 
     async function start() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } },
-        });
-        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = stream;
+        const probe = await navigator.mediaDevices.getUserMedia({ video: true });
+        probe.getTracks().forEach(t => t.stop());
+        if (cancelled) return;
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-
-        if (!('BarcodeDetector' in window)) {
-          setStatus('no-detector');
-          return;
-        }
-
-        const detector = new window.BarcodeDetector({
-          formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'qr_code', 'code_128', 'code_39', 'itf'],
-        });
+        const reader  = new BrowserMultiFormatReader();
+        const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+        if (devices.length === 0) { setStatus('no-camera'); return; }
+        const camera  = devices.find(d => /back|environment|rear/i.test(d.label)) || devices[0];
 
         setStatus('scanning');
 
-        async function tick() {
-          if (cancelled) return;
-          try {
-            if (videoRef.current?.readyState >= 2) {
-              const codes = await detector.detect(videoRef.current);
-              if (codes.length > 0 && !cancelled) {
-                onScanned(codes[0].rawValue);
-                return;
-              }
-            }
-          } catch {}
-          if (!cancelled) rafRef.current = requestAnimationFrame(tick);
-        }
-        rafRef.current = requestAnimationFrame(tick);
-
+        const controls = await reader.decodeFromVideoDevice(
+          camera.deviceId,
+          videoRef.current,
+          (result) => { if (result && !cancelled) onScanned(result.getText()); }
+        );
+        if (cancelled) { controls.stop(); return; }
+        controlsRef.current = controls;
       } catch (e) {
         if (cancelled) return;
-        if (e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError') {
-          setStatus('denied');
-        } else if (e?.name === 'NotFoundError' || e?.name === 'DevicesNotFoundError') {
-          setStatus('no-camera');
-        } else {
-          setStatus('no-detector');
-        }
+        if (e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError') setStatus('denied');
+        else if (e?.name === 'NotFoundError' || e?.name === 'DevicesNotFoundError') setStatus('no-camera');
+        else setStatus('error');
       }
     }
 
     start();
-
     return () => {
       cancelled = true;
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
+      if (controlsRef.current) { controlsRef.current.stop(); controlsRef.current = null; }
     };
   }, [visible]);
 
@@ -84,10 +62,45 @@ export default function BarcodeScanner({ visible, onScanned, onClose }) {
     if (code.length >= 4) { onScanned(code); setManualCode(''); }
   }
 
-  const showManual = status === 'denied' || status === 'no-camera' || status === 'no-detector' || status === 'error';
+  async function handleImageFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImgError('');
+    setImgLoading(true);
+    const url = URL.createObjectURL(file);
+    try {
+      const reader = new BrowserMultiFormatReader();
+      const result = await reader.decodeFromImageUrl(url);
+      if (result) {
+        onScanned(result.getText());
+      } else {
+        setImgError('No barcode found in that image.');
+      }
+    } catch {
+      setImgError('No barcode found in that image.');
+    } finally {
+      URL.revokeObjectURL(url);
+      setImgLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  const cameraFailed = status === 'denied' || status === 'no-camera' || status === 'error';
+  const cameraMsg    = status === 'denied'   ? 'Camera access blocked. Allow it in system settings, then reopen Too Good.'
+                     : status === 'no-camera' ? 'No camera detected.'
+                     :                          'Could not start the camera.';
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+      {/* hidden file input */}
+      {React.createElement('input', {
+        type: 'file',
+        accept: 'image/*',
+        ref: fileInputRef,
+        style: { display: 'none' },
+        onChange: handleImageFile,
+      })}
+
       <View style={s.root}>
         {/* Header */}
         <View style={s.header}>
@@ -100,17 +113,19 @@ export default function BarcodeScanner({ visible, onScanned, onClose }) {
           </TouchableOpacity>
         </View>
 
-        {/* Camera view */}
+        {/* Camera area */}
         <View style={s.videoWrap}>
           {React.createElement('video', {
             ref: videoRef,
-            style: { width: '100%', height: '100%', objectFit: 'cover', display: showManual ? 'none' : 'block' },
+            style: {
+              width: '100%', height: '100%', objectFit: 'cover',
+              display: cameraFailed ? 'none' : 'block',
+            },
             autoPlay: true,
             playsInline: true,
             muted: true,
           })}
 
-          {/* Targeting frame (shown while scanning) */}
           {status === 'scanning' && (
             <View style={s.overlay} pointerEvents="none">
               <View style={s.frame}>
@@ -130,52 +145,65 @@ export default function BarcodeScanner({ visible, onScanned, onClose }) {
             </View>
           )}
 
-          {/* Manual entry fallback */}
-          {showManual && (
+          {cameraFailed && (
             <View style={s.msgOverlay}>
               <View style={s.msgIconBox}>
                 {status === 'denied' ? (
                   <Svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1.4} strokeLinecap="round">
-                    <Circle cx="12" cy="12" r="10" />
-                    <Line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                    <Circle cx="12" cy="12" r="10" /><Line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
                   </Svg>
-                ) : status === 'no-camera' ? (
+                ) : (
                   <Svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1.4} strokeLinecap="round">
                     <Path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                     <Circle cx="12" cy="13" r="4" />
                     <Line x1="1" y1="1" x2="23" y2="23" />
                   </Svg>
-                ) : (
-                  <Svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1.4} strokeLinecap="round">
-                    <Rect x="2" y="3" width="20" height="14" rx="2" />
-                    <Path d="M8 21h8M12 17v4" />
-                  </Svg>
                 )}
               </View>
-              <Text style={s.msgText}>
-                {status === 'denied'
-                  ? 'Camera access was blocked.\nAllow camera in your browser settings\nthen reload, or enter the barcode manually.'
-                  : status === 'no-camera'
-                  ? 'No camera detected.\nEnter the barcode number manually.'
-                  : 'Barcode scanning not supported in this browser.\nTry Chrome or Edge, or enter the number manually.'}
-              </Text>
-              <View style={s.manualRow}>
-                <TextInput
-                  style={s.manualInput}
-                  value={manualCode}
-                  onChangeText={setManualCode}
-                  placeholder="e.g. 8901030783186"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  keyboardType="number-pad"
-                  onSubmitEditing={submitManual}
-                  autoFocus
-                />
-                <TouchableOpacity style={s.manualBtn} onPress={submitManual}>
-                  <Text style={s.manualBtnTxt}>Look up →</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={s.msgText}>{cameraMsg}</Text>
             </View>
           )}
+        </View>
+
+        {/* Bottom panel — always visible */}
+        <View style={s.bottomPanel}>
+          {/* Manual entry row */}
+          <View style={s.manualRow}>
+            <TextInput
+              style={s.manualInput}
+              value={manualCode}
+              onChangeText={setManualCode}
+              placeholder="Type barcode number…"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              keyboardType="number-pad"
+              onSubmitEditing={submitManual}
+            />
+            <TouchableOpacity style={s.manualBtn} onPress={submitManual}>
+              <Text style={s.manualBtnTxt}>Look up →</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Image import row */}
+          <TouchableOpacity
+            style={s.importBtn}
+            onPress={() => { setImgError(''); fileInputRef.current?.click(); }}
+            disabled={imgLoading}
+          >
+            {imgLoading ? (
+              <ActivityIndicator color={C.gold} size="small" />
+            ) : (
+              <>
+                <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 8 }}>
+                  <Rect x="3" y="3" width="18" height="18" rx="2" />
+                  <Circle cx="8.5" cy="8.5" r="1.5" />
+                  <Polyline points="21 15 16 10 5 21" />
+                </Svg>
+                <Text style={s.importBtnTxt}>Import photo of barcode</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {!!imgError && <Text style={s.imgErrorTxt}>{imgError}</Text>}
         </View>
       </View>
     </Modal>
@@ -201,8 +229,12 @@ const s = StyleSheet.create({
   msgOverlay:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 32 },
   msgIconBox:   { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   msgText:      { fontFamily: F.mono, fontSize: 13, color: C.text2, letterSpacing: 0.5, textAlign: 'center', lineHeight: 22 },
-  manualRow:    { flexDirection: 'row', gap: 8, marginTop: 8, width: '100%', maxWidth: 360 },
+  bottomPanel:  { backgroundColor: '#0a0a0a', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', padding: 16, gap: 10 },
+  manualRow:    { flexDirection: 'row', gap: 8 },
   manualInput:  { flex: 1, fontFamily: F.mono, fontSize: 14, color: '#fff', borderWidth: 1, borderColor: C.gold, paddingHorizontal: 12, paddingVertical: 10, outlineWidth: 0 },
   manualBtn:    { backgroundColor: C.gold, paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center' },
   manualBtnTxt: { fontFamily: F.mono, fontSize: 12, color: '#000', letterSpacing: 1 },
+  importBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingVertical: 10, paddingHorizontal: 16 },
+  importBtnTxt: { fontFamily: F.mono, fontSize: 12, color: C.gold, letterSpacing: 1 },
+  imgErrorTxt:  { fontFamily: F.mono, fontSize: 11, color: '#e57373', textAlign: 'center', letterSpacing: 0.5 },
 });

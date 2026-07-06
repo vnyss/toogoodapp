@@ -1181,34 +1181,52 @@ function wxLookup(code, isDay) {
 // ─────────────────────────────────────────────────────────────
 //  SCAN RESULT MODAL  (matches #barcodeModal .scan-result in index.html)
 // ─────────────────────────────────────────────────────────────
+function MicroPill({ label, value, unit, mc }) {
+  if (!value) return null;
+  return (
+    <View style={{ alignItems: 'center', minWidth: 52 }}>
+      <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text, fontWeight: '600' }}>{value}{unit}</Text>
+      <Text style={{ fontFamily: F.mono, fontSize: 9, color: mc.text3, letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 2 }}>{label}</Text>
+    </View>
+  );
+}
+
 function ScanResultModal({ visible, loading, product, error, added, onAdd, onClose, onRescan, mc, accentColor }) {
   const sm = StyleSheet.create({
-    overlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center' },
-    box:       { width: 420, maxWidth: '90%', backgroundColor: mc.surface, borderWidth: 1, borderColor: mc.border, padding: 28 },
-    name:      { fontFamily: F.display, fontSize: 18, color: mc.text, letterSpacing: 0.5, marginBottom: 4 },
-    brand:     { fontSize: 12, color: mc.text3, fontFamily: F.mono, letterSpacing: 1, marginBottom: 18 },
-    macroRow:  { flexDirection: 'row', gap: 18, marginBottom: 14 },
-    macroVal:  { fontFamily: F.display, fontSize: 18, color: accentColor },
-    macroLbl:  { fontSize: 9, color: mc.text3, fontFamily: F.mono, letterSpacing: 2, textTransform: 'uppercase', marginTop: 2 },
-    serving:   { fontSize: 11, color: mc.text3, fontFamily: F.mono, letterSpacing: 0.5, marginBottom: 22 },
-    actions:   { flexDirection: 'row', gap: 10 },
-    addBtn:    { flex: 1, paddingVertical: 11, backgroundColor: accentColor, alignItems: 'center' },
-    addBtnTxt: { fontFamily: F.mono, fontSize: 11, color: '#060606', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
-    closeBtn:  { paddingVertical: 11, paddingHorizontal: 18, borderWidth: 1, borderColor: mc.border, alignItems: 'center' },
-    closeBtnTxt:{ fontFamily: F.mono, fontSize: 11, color: mc.text2, letterSpacing: 2, textTransform: 'uppercase' },
-    msg:       { fontSize: 13, color: mc.text2, fontFamily: F.mono, textAlign: 'center', marginVertical: 24, lineHeight: 20 },
-    doneMsg:   { fontSize: 13, color: '#4CAF7C', fontFamily: F.mono, letterSpacing: 0.5 },
+    overlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+    box:         { width: 460, maxWidth: '96%', backgroundColor: mc.surface, borderWidth: 1, borderColor: mc.border },
+    header:      { padding: 22, paddingBottom: 0 },
+    name:        { fontFamily: F.display, fontSize: 19, color: mc.text, letterSpacing: 0.5, marginBottom: 3 },
+    brand:       { fontSize: 11, color: mc.text3, fontFamily: F.mono, letterSpacing: 1.5 },
+    divider:     { height: 1, backgroundColor: mc.border, marginTop: 18 },
+    section:     { padding: 20, paddingBottom: 0 },
+    sectionLbl:  { fontFamily: F.mono, fontSize: 9, color: mc.text3, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 12 },
+    macroRow:    { flexDirection: 'row', gap: 24 },
+    macroVal:    { fontFamily: F.display, fontSize: 22, color: accentColor },
+    macroLbl:    { fontSize: 9, color: mc.text3, fontFamily: F.mono, letterSpacing: 2, textTransform: 'uppercase', marginTop: 3 },
+    microRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
+    serving:     { marginTop: 14, marginHorizontal: 20, fontSize: 11, color: mc.text3, fontFamily: F.mono, letterSpacing: 0.5 },
+    actions:     { flexDirection: 'row', gap: 10, padding: 20, paddingTop: 18 },
+    addBtn:      { flex: 1, paddingVertical: 12, backgroundColor: accentColor, alignItems: 'center' },
+    addBtnTxt:   { fontFamily: F.mono, fontSize: 11, color: '#060606', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
+    closeBtn:    { paddingVertical: 12, paddingHorizontal: 18, borderWidth: 1, borderColor: mc.border, alignItems: 'center' },
+    closeBtnTxt: { fontFamily: F.mono, fontSize: 11, color: mc.text2, letterSpacing: 2, textTransform: 'uppercase' },
+    msg:         { fontSize: 13, color: mc.text2, fontFamily: F.mono, textAlign: 'center', marginVertical: 28, lineHeight: 20, padding: 20 },
+    doneMsg:     { fontSize: 13, color: '#4CAF7C', fontFamily: F.mono, letterSpacing: 0.5 },
   });
+
+  const hasMicros = product && (product.fiber || product.sugar || product.sodium || product.vitC || product.vitD || product.calcium || product.iron || product.potassium);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={sm.overlay}>
         <View style={sm.box}>
+
           {loading && (
-            <>
+            <View style={{ alignItems: 'center', padding: 32 }}>
               <ActivityIndicator color={accentColor} size="large" />
               <Text style={sm.msg}>Looking up product…</Text>
-            </>
+            </View>
           )}
 
           {!loading && error && (
@@ -1223,15 +1241,49 @@ function ScanResultModal({ visible, loading, product, error, added, onAdd, onClo
 
           {!loading && !error && product && !added && (
             <>
-              <Text style={sm.name}>{product.name}</Text>
-              {!!product.brand && <Text style={sm.brand}>{product.brand}</Text>}
-              <View style={sm.macroRow}>
-                <View><Text style={sm.macroVal}>{product.calories}</Text><Text style={sm.macroLbl}>Kcal</Text></View>
-                <View><Text style={sm.macroVal}>{product.protein}g</Text><Text style={sm.macroLbl}>Protein</Text></View>
-                <View><Text style={sm.macroVal}>{product.carbs}g</Text><Text style={sm.macroLbl}>Carbs</Text></View>
-                <View><Text style={sm.macroVal}>{product.fat}g</Text><Text style={sm.macroLbl}>Fat</Text></View>
+              {/* Name + brand */}
+              <View style={sm.header}>
+                <Text style={sm.name}>{product.name}</Text>
+                {!!product.brand && <Text style={sm.brand}>{product.brand.toUpperCase()}</Text>}
               </View>
-              <Text style={sm.serving}>Serving size: {product.serving} — values shown per 100g</Text>
+
+              <View style={sm.divider} />
+
+              {/* Macros */}
+              <View style={sm.section}>
+                <Text style={sm.sectionLbl}>Macronutrients (per 100g)</Text>
+                <View style={sm.macroRow}>
+                  <View><Text style={sm.macroVal}>{product.calories}</Text><Text style={sm.macroLbl}>Kcal</Text></View>
+                  <View><Text style={sm.macroVal}>{product.protein}g</Text><Text style={sm.macroLbl}>Protein</Text></View>
+                  <View><Text style={sm.macroVal}>{product.carbs}g</Text><Text style={sm.macroLbl}>Carbs</Text></View>
+                  <View><Text style={sm.macroVal}>{product.fat}g</Text><Text style={sm.macroLbl}>Fat</Text></View>
+                </View>
+              </View>
+
+              {/* Micros — only render rows that have data */}
+              {hasMicros && (
+                <>
+                  <View style={[sm.divider, { marginTop: 18 }]} />
+                  <View style={sm.section}>
+                    <Text style={sm.sectionLbl}>Additional nutrition</Text>
+                    <View style={sm.microRow}>
+                      <MicroPill label="Fiber"     value={product.fiber}     unit="g"   mc={mc} />
+                      <MicroPill label="Sugar"     value={product.sugar}     unit="g"   mc={mc} />
+                      <MicroPill label="Sodium"    value={product.sodium}    unit="mg"  mc={mc} />
+                      <MicroPill label="Vit C"     value={product.vitC}      unit="mg"  mc={mc} />
+                      <MicroPill label="Vit D"     value={product.vitD}      unit="μg"  mc={mc} />
+                      <MicroPill label="Calcium"   value={product.calcium}   unit="mg"  mc={mc} />
+                      <MicroPill label="Iron"      value={product.iron}      unit="mg"  mc={mc} />
+                      <MicroPill label="Potassium" value={product.potassium} unit="mg"  mc={mc} />
+                      <MicroPill label="Magnesium" value={product.magnesium} unit="mg"  mc={mc} />
+                      <MicroPill label="Zinc"      value={product.zinc}      unit="mg"  mc={mc} />
+                    </View>
+                  </View>
+                </>
+              )}
+
+              <Text style={sm.serving}>Serving size: {product.serving}</Text>
+
               <View style={sm.actions}>
                 <TouchableOpacity style={sm.addBtn} onPress={onAdd}><Text style={sm.addBtnTxt}>Add to Today's Log</Text></TouchableOpacity>
                 <TouchableOpacity style={sm.closeBtn} onPress={onClose}><Text style={sm.closeBtnTxt}>Close</Text></TouchableOpacity>
@@ -1241,7 +1293,7 @@ function ScanResultModal({ visible, loading, product, error, added, onAdd, onClo
 
           {!loading && added && (
             <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 24, justifyContent: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 28, justifyContent: 'center', paddingHorizontal: 20 }}>
                 <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#4CAF7C" strokeWidth={2.5} strokeLinecap="round">
                   <Polyline points="20 6 9 17 4 12" />
                 </Svg>
@@ -1253,6 +1305,7 @@ function ScanResultModal({ visible, loading, product, error, added, onAdd, onClo
               </View>
             </>
           )}
+
         </View>
       </View>
     </Modal>
@@ -1580,7 +1633,7 @@ export default function DashboardScreen({ navigation }) {
   }
 
   const hour     = new Date().getHours();
-  const greeting = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : hour < 21 ? 'Good evening' : 'Good night';
+  const greeting = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const name     = fullName || (user ? user.split('@')[0] : '');
 
   function nav(s) {
@@ -1691,11 +1744,11 @@ export default function DashboardScreen({ navigation }) {
           {React.createElement('div', {
             style: {
               fontFamily: "'Jim Nightshade', cursive",
-              fontSize: 56,
+              fontSize: 80,
               color: accentColor,
               fontWeight: '400',
               letterSpacing: '-0.5px',
-              lineHeight: '62px',
+              lineHeight: '88px',
             }
           }, name + '.')}
         </View>

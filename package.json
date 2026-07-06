@@ -1,11 +1,18 @@
 {
   "name": "toogoodapp",
-  "version": "1.0.0",
+  "version": "1.1.1",
+  "description": "Too Good — health and fitness desktop app",
+  "author": "Too Good",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
-    "ios": "expo start --ios"
+    "ios": "expo start --ios",
+    "web": "expo start --web --port 8081",
+    "electron": "set NODE_ENV=development&& electron electron/main.js",
+    "desktop": "concurrently --kill-others \"npm run web\" \"wait-on http://localhost:8081 && npm run electron\"",
+    "build:web": "expo export -p web",
+    "build:desktop": "npm run build:web && electron-builder"
   },
   "dependencies": {
     "@expo/metro-runtime": "~3.2.3",
@@ -16,6 +23,7 @@
     "@react-navigation/stack": "^6.3.29",
     "@zxing/browser": "^0.2.0",
     "@zxing/library": "^0.23.0",
+    "electron-updater": "^6.8.9",
     "expo": "~51.0.0",
     "expo-status-bar": "~1.12.1",
     "react": "18.2.0",
@@ -28,6 +36,57 @@
     "react-native-web": "~0.19.10"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "concurrently": "^10.0.3",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
+    "wait-on": "^9.0.10"
+  },
+  "build": {
+    "appId": "com.toogood.desktop",
+    "productName": "Too Good",
+    "electronDist": "node_modules/electron/dist",
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "directories": {
+      "output": "desktop-build"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "assets/icon.png",
+      "assets/installer-header.bmp",
+      "assets/installer-sidebar.bmp"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "vnyss",
+      "repo": "toogoodapp"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Too Good",
+      "artifactName": "TooGood-Setup.exe",
+      "deleteAppDataOnUninstall": false,
+      "installerSidebar": "assets/installer-sidebar.bmp",
+      "installerHeader": "assets/installer-header.bmp"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

@@ -645,19 +645,24 @@ export default function LogScreen({ navigation }) {
     setEntry(e => {
       if (!e) return e;
       const upd = { ...e };
-      if (logged.weight  != null) upd.weight  = String(logged.weight);
-      if (logged.steps   != null) upd.steps   = String(logged.steps);
-      if (logged.workout)         upd.workout  = logged.workout;
-      if (logged.hunger  != null) setHunger(logged.hunger);
-      if (logged.energy  != null) setEnergy(logged.energy);
+      if (logged.weight       != null) upd.weight        = String(logged.weight);
+      if (logged.steps        != null) upd.steps         = String(logged.steps);
+      if (logged.workout)              upd.workout        = logged.workout;
+      if (logged.hunger       != null) setHunger(logged.hunger);
+      if (logged.energy       != null) setEnergy(logged.energy);
+      if (logged.sleep_hours  != null) upd.sleep_hours   = String(logged.sleep_hours);
+      if (logged.sleep_quality!= null) upd.sleep_quality = logged.sleep_quality;
+      if (logged.water        != null) upd.water         = logged.water;
       if (logged.foods?.length) {
         const existing = new Set((upd.foods || []).map(f => f.name.toLowerCase().trim()));
+        const VALID_MEALS = new Set(['breakfast', 'lunch', 'dinner', 'snack']);
         const toAdd = (logged.foods || []).filter(
           f => !existing.has((f.name || '').toLowerCase().trim())
         ).map(f => ({
           name: f.name || '', serving: f.serving || '',
           calories: f.calories || 0, protein: f.protein || 0,
           carbs: f.carbs || 0, fat: f.fat || 0,
+          meal: VALID_MEALS.has(f.meal) ? f.meal : null,
         }));
         const foods = [...(upd.foods || []), ...toAdd];
         upd.foods    = foods;
@@ -667,7 +672,6 @@ export default function LogScreen({ navigation }) {
       }
       return upd;
     });
-    // Show form state after AI fills in data
     setSaved(false);
   }
 
@@ -1123,35 +1127,56 @@ export default function LogScreen({ navigation }) {
                   </View>
                 </View>
               ) : (
-                (entry.foods || []).map((f, i) => (
-                  <View key={i} style={[st.foodItem, { alignItems: 'flex-start', paddingVertical: 8 }]}>
-                    {f.photo ? (
-                      <TouchableOpacity onPress={() => capturePhotoForFood(i)}>
-                        <Image source={{ uri: f.photo }} style={{ width: 38, height: 38, marginRight: 8, borderRadius: 2 }} />
-                      </TouchableOpacity>
-                    ) : (
-                      Platform.OS === 'web' && (
-                        <TouchableOpacity onPress={() => capturePhotoForFood(i)} style={{ width: 38, height: 38, marginRight: 8, borderWidth: 1, borderColor: mc.border, alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}>
-                        </TouchableOpacity>
-                      )
-                    )}
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={st.foodItemName} numberOfLines={1}>
-                        {f.name}{f.serving ? ` (${f.serving})` : ''}
-                      </Text>
-                      {f.tag && (
-                        <Text style={{ fontFamily: F.mono, fontSize: 9, color: MEAL_TAGS.find(t => t.key === f.tag)?.color || mc.text3 }}>
-                          {MEAL_TAGS.find(t => t.key === f.tag)?.label}
+                (() => {
+                  const MEAL_GROUPS = [
+                    { key: 'breakfast', label: 'BREAKFAST' },
+                    { key: 'lunch',     label: 'LUNCH' },
+                    { key: 'dinner',    label: 'DINNER' },
+                    { key: 'snack',     label: 'SNACK' },
+                    { key: null,        label: 'OTHER' },
+                  ];
+                  const indexedFoods = (entry.foods || []).map((f, idx) => ({ ...f, _idx: idx }));
+                  return MEAL_GROUPS.map(group => {
+                    const groupFoods = indexedFoods.filter(f => (f.meal || null) === group.key);
+                    if (groupFoods.length === 0) return null;
+                    return (
+                      <View key={group.key || 'other'}>
+                        <Text style={{ fontFamily: F.mono, fontSize: 9, letterSpacing: 3, color: accentColor, marginTop: 10, marginBottom: 4 }}>
+                          {group.label}
                         </Text>
-                      )}
-                    </View>
-                    <Text style={st.foodItemCal}>{f.calories || 0} kcal</Text>
-                    <Text style={st.foodItemMacro}>{f.protein || 0}g P</Text>
-                    <TouchableOpacity onPress={() => deleteFood(i)}>
-                      <Text style={st.foodItemDel}>X</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))
+                        {groupFoods.map(f => (
+                          <View key={f._idx} style={[st.foodItem, { alignItems: 'flex-start', paddingVertical: 8 }]}>
+                            {f.photo ? (
+                              <TouchableOpacity onPress={() => capturePhotoForFood(f._idx)}>
+                                <Image source={{ uri: f.photo }} style={{ width: 38, height: 38, marginRight: 8, borderRadius: 2 }} />
+                              </TouchableOpacity>
+                            ) : (
+                              Platform.OS === 'web' && (
+                                <TouchableOpacity onPress={() => capturePhotoForFood(f._idx)} style={{ width: 38, height: 38, marginRight: 8, borderWidth: 1, borderColor: mc.border, alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}>
+                                </TouchableOpacity>
+                              )
+                            )}
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={st.foodItemName} numberOfLines={1}>
+                                {f.name}{f.serving ? ` (${f.serving})` : ''}
+                              </Text>
+                              {f.tag && (
+                                <Text style={{ fontFamily: F.mono, fontSize: 9, color: MEAL_TAGS.find(t => t.key === f.tag)?.color || mc.text3 }}>
+                                  {MEAL_TAGS.find(t => t.key === f.tag)?.label}
+                                </Text>
+                              )}
+                            </View>
+                            <Text style={st.foodItemCal}>{f.calories || 0} kcal</Text>
+                            <Text style={st.foodItemMacro}>{f.protein || 0}g P</Text>
+                            <TouchableOpacity onPress={() => deleteFood(f._idx)}>
+                              <Text style={st.foodItemDel}>X</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  });
+                })()
               )}
             </View>
 

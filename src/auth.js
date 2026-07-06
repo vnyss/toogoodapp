@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const TOKEN_KEY      = 'tg_token';
-const USER_KEY       = 'tg_user';
-const ONBOARDING_KEY = 'tg_onboarding_done';
+const TOKEN_KEY         = 'tg_token';
+const USER_KEY          = 'tg_user';
+const ONBOARDING_KEY    = 'tg_onboarding_done';
+const DESKTOP_INTRO_KEY = 'tg_desktop_intro_done';
 
 export const saveAuth = async (token, username) => {
   await AsyncStorage.setItem(TOKEN_KEY, token);
@@ -19,6 +20,9 @@ export const isOnboardingDone     = async () => {
   // null means key was never set (e.g. returning user on a fresh browser) — treat as done
   return v !== '0';
 };
+
+export const isDesktopIntroDone  = async () => (await AsyncStorage.getItem(DESKTOP_INTRO_KEY)) === '1';
+export const markDesktopIntroDone = () => AsyncStorage.setItem(DESKTOP_INTRO_KEY, '1');
 
 export const clearAuth = async () => {
   await AsyncStorage.removeItem(TOKEN_KEY);

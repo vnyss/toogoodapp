@@ -4,7 +4,8 @@ import Svg, { Path, Circle, Line, Rect, Polyline, Polygon } from 'react-native-s
 import LogoSvg from './src/LogoSvg';
 import { C, F } from './src/theme';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
-import { getToken, getUser, clearAuth, isOnboardingDone, markOnboardingNeeded, markOnboardingDone } from './src/auth';
+import { getToken, getUser, clearAuth, isOnboardingDone, markOnboardingNeeded, markOnboardingDone, isDesktopIntroDone, markDesktopIntroDone } from './src/auth';
+import DesktopWelcomeScreen from './src/screens/DesktopWelcomeScreen';
 import LoginScreen       from './src/screens/LoginScreen';
 import OnboardingScreen  from './src/screens/OnboardingScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
@@ -334,6 +335,15 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
 }
 
 export default function App() {
+  // Load Jim Nightshade from Google Fonts (web only)
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Jim+Nightshade&display=swap';
+      document.head.appendChild(link);
+    }
+  }, []);
   const [screen,      setScreen]      = useState('loading');
   const [username,    setUsername]    = useState('');
   const [userGender,  setUserGender]  = useState('');
@@ -342,7 +352,19 @@ export default function App() {
   const isMobile = width < 768;
 
   useEffect(() => {
-    getToken().then(async t => {
+    async function init() {
+      const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+
+      if (isElectron) {
+        // Desktop: always show intro/login — never auto-jump into an account.
+        // First launch shows the full feature tour; subsequent launches go straight to login.
+        const introDone = await isDesktopIntroDone();
+        setScreen(introDone ? 'login' : 'desktop-intro');
+        return;
+      }
+
+      // Web: restore session as before
+      const t = await getToken();
       if (t) {
         const done = await isOnboardingDone();
         if (!done) {
@@ -355,7 +377,6 @@ export default function App() {
         setUsername(u || '');
         const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('tg_screen') : null;
         setScreen(saved && SCREENS[saved] ? saved : 'dashboard');
-        // Fetch gender for period tracker visibility
         try {
           const res = await fetch('http://localhost:5000/api/v1/me', {
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
@@ -366,7 +387,8 @@ export default function App() {
       } else {
         setScreen('login');
       }
-    });
+    }
+    init();
   }, []);
 
   function persistScreen(s) {
@@ -388,8 +410,9 @@ export default function App() {
   async function handleSignupSuccess(u) { setUsername(u); await markOnboardingNeeded(); setScreen('onboarding'); }
   async function handleLogout() { await clearAuth(); setUsername(''); typeof localStorage !== 'undefined' && localStorage.removeItem('tg_screen'); setScreen('login'); }
 
-  if (screen === 'loading')    return <ThemeProvider username=""><View style={{ flex: 1, backgroundColor: C.bg }} /></ThemeProvider>;
-  if (screen === 'login')      return <ThemeProvider username=""><LoginScreen navigation={{ ...navigation, onSuccess: handleLoginSuccess, onSignupSuccess: handleSignupSuccess }} /></ThemeProvider>;
+  if (screen === 'loading')      return <ThemeProvider username=""><View style={{ flex: 1, backgroundColor: C.bg }} /></ThemeProvider>;
+  if (screen === 'desktop-intro') return <ThemeProvider username=""><DesktopWelcomeScreen onDone={async () => { await markDesktopIntroDone(); setScreen('login'); }} /></ThemeProvider>;
+  if (screen === 'login')        return <ThemeProvider username=""><LoginScreen navigation={{ ...navigation, onSuccess: handleLoginSuccess, onSignupSuccess: handleSignupSuccess }} /></ThemeProvider>;
   if (screen === 'onboarding') return <ThemeProvider username={username}><OnboardingScreen navigation={{ navigate: persistScreen }} /></ThemeProvider>;
 
   const Screen = SCREENS[screen] || DashboardScreen;

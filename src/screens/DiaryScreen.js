@@ -8,9 +8,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { C, F, S } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { getToken, getUser } from '../auth';
+import { IS_ELECTRON, API_BASE } from '../config';
+import * as local from '../localStore';
 
 /* ─── constants ─── */
-const BASE = 'http://127.0.0.1:5000';
+const BASE = API_BASE;
 
 /* ─── helpers ─── */
 function todayISO() { return new Date().toISOString().slice(0, 10); }
@@ -38,6 +40,14 @@ async function apiP(path, body) {
   });
   return r.json();
 }
+
+/* ─── diary I/O abstraction (local for Electron, server for web) ─── */
+const diary = {
+  getLock:   ()           => IS_ELECTRON ? local.getDiaryLock()              : apiG('/perfect/api/diary/lock'),
+  setLock:   (body)       => IS_ELECTRON ? local.setDiaryLock(body)          : apiP('/perfect/api/diary/lock', body),
+  getEntry:  (date)       => IS_ELECTRON ? local.getDiaryEntry(date)         : apiG(`/perfect/api/diary/entry?date=${date}`),
+  saveEntry: (date, text) => IS_ELECTRON ? local.saveDiaryEntry(date, text)  : apiP('/perfect/api/diary/entry', { date, entry: text }),
+};
 
 /* ─── icons ─── */
 function IconLock({ size = 11, color = C.text3 }) {
@@ -265,7 +275,7 @@ export default function DiaryScreen({ navigation }) {
   /* ─── init ─── */
   async function init() {
     try {
-      const lock = await apiG('/perfect/api/diary/lock');
+      const lock = await diary.getLock();
       setLockEnabled(!!lock.enabled);
       if (!lock.setup_done)   { setView('setup'); }
       else if (lock.enabled)  { setView('locked'); }
@@ -278,7 +288,7 @@ export default function DiaryScreen({ navigation }) {
   /* ─── entry I/O ─── */
   async function loadEntry(d) {
     try {
-      const r = await apiG(`/perfect/api/diary/entry?date=${d}`);
+      const r = await diary.getEntry(d);
       const t = r.entry || '';
       setEntry(t);
       setChars(t.length);
@@ -287,7 +297,7 @@ export default function DiaryScreen({ navigation }) {
 
   async function saveEntry(silent = false) {
     try {
-      await apiP('/perfect/api/diary/entry', { date, entry: entryRef.current });
+      await diary.saveEntry(date, entryRef.current);
       if (!silent) {
         setShowSaved(true);
         setTimeout(() => setShowSaved(false), 1800);
@@ -322,7 +332,7 @@ export default function DiaryScreen({ navigation }) {
       setSetupErr(false);
     } else {
       if (pin === pin1) {
-        await apiP('/perfect/api/diary/lock', { action: 'setup', enabled: true, pin });
+        await diary.setLock({ action: 'setup', enabled: true, pin });
         setLockEnabled(true);
         setView('unlocked');
         loadEntry(todayISO());
@@ -342,7 +352,7 @@ export default function DiaryScreen({ navigation }) {
   }
 
   async function diaryNoPin() {
-    await apiP('/perfect/api/diary/lock', { action: 'setup', enabled: false });
+    await diary.setLock({ action: 'setup', enabled: false });
     setLockEnabled(false);
     setView('unlocked');
     loadEntry(todayISO());
@@ -350,7 +360,7 @@ export default function DiaryScreen({ navigation }) {
 
   /* ─── unlock ─── */
   async function handleUnlockComplete(pin, reset) {
-    const r = await apiP('/perfect/api/diary/lock', { action: 'verify', pin });
+    const r = await diary.setLock({ action: 'verify', pin });
     if (r.valid) {
       setView('unlocked');
       loadEntry(date);
@@ -367,7 +377,7 @@ export default function DiaryScreen({ navigation }) {
   }
 
   async function resetLock() {
-    await apiP('/perfect/api/diary/lock', { action: 'setup', enabled: false });
+    await diary.setLock({ action: 'setup', enabled: false });
     setLockEnabled(false);
     setView('setup');
     setShowPinSetup(false);

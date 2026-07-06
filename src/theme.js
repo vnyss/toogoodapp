@@ -16,12 +16,12 @@ export const C = {
   red:      '#C85A6E',
 };
 
-// Font families — clean sans + mono pairing (modern dashboard look)
+// Font families — typewriter aesthetic throughout
 export const F = {
-  mono:       "'JetBrains Mono', monospace",   // --mono (data, labels, numbers)
-  display:    "'Inter', sans-serif",           // --display (headings, brand)
-  serif:      "'Inter', sans-serif",           // large display numbers (score, etc.)
-  nightshade: "'Jim Nightshade', cursive",     // decorative display font
+  mono:       "'Courier New', Courier, monospace",  // typewriter mono (data, labels)
+  display:    "'Courier New', Courier, monospace",  // typewriter headings
+  serif:      "'Courier New', Courier, monospace",  // typewriter display numbers
+  nightshade: "'Jim Nightshade', cursive",          // dashboard name only
 };
 
 // Shared style objects

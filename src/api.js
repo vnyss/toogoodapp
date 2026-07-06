@@ -1,5 +1,6 @@
-﻿import { API_BASE } from './config';
+﻿import { API_BASE, IS_ELECTRON } from './config';
 import { getToken } from './auth';
+import * as local from './localStore';
 
 async function req(path, opts = {}) {
   const token = await getToken();
@@ -16,7 +17,7 @@ const post = (path, body)  => req(path, { method: 'POST', body: JSON.stringify(b
 export const login    = (username, password) => post('/api/v1/login',    { username, password });
 export const register = (body)              => post('/api/v1/register', body);
 export const logout = ()                   => post('/api/v1/logout', {});
-export const getMe  = ()                   => get('/api/v1/me');
+export const getMe  = ()                   => IS_ELECTRON ? local.getMe() : get('/api/v1/me');
 
 // Score / XP
 export const getScore   = ()       => get('/perfect/api/score');
@@ -60,9 +61,9 @@ export const banComment     = (text, sorry_count) => post('/perfect/ban_comment'
 export const aiChat    = (message, history) => post('/perfect/api/assistant',  { message, history });
 export const coachChat = (message, history) => post('/perfect/api/coach-chat', { message, history });
 
-// Chat sessions (server-side sync)
-export const getSessions  = ()         => get('/api/v1/sessions');
-export const saveSessions = (sessions) => post('/api/v1/sessions', { sessions });
+// Chat sessions (local on desktop, server-synced on web)
+export const getSessions  = ()         => IS_ELECTRON ? local.getSessions()          : get('/api/v1/sessions');
+export const saveSessions = (sessions) => IS_ELECTRON ? local.saveSessions(sessions) : post('/api/v1/sessions', { sessions });
 
 // Blood Monitor
 export const monitorAnalyze = (d)    => post('/perfect/api/monitor', d);                    // {gender, age, values}
@@ -70,23 +71,23 @@ export const monitorExtract = (d)    => post('/perfect/api/monitor/extract', d);
 
 // Photo-based food recognition
 export const foodPhotoExtract = (d)  => post('/perfect/api/food/photo-extract', d);          // {image_b64, image_mime}
-export const monitorSave    = (data) => post('/perfect/api/monitor/save', data);             // {report: {...}, label?}
-export const monitorHistory = ()     => get('/perfect/api/monitor/history');
+export const monitorSave    = (data) => IS_ELECTRON ? local.monitorSave(data)    : post('/perfect/api/monitor/save', data);
+export const monitorHistory = ()     => IS_ELECTRON ? local.monitorHistory()     : get('/perfect/api/monitor/history');
 
 // Exercise schedule
-export const saveExerciseSchedule = (d) => post('/perfect/api/save-day-schedule', d);       // {schedule, pool}
+export const saveExerciseSchedule = (d) => IS_ELECTRON ? local.saveExerciseSchedule(d) : post('/perfect/api/save-day-schedule', d);
 
 // Calendar AI edit
 export const calendarEdit     = (d) => post('/perfect/api/calendar-edit', d);                // {instruction}
-export const saveExerciseTimes = (d) => post('/perfect/api/save-exercise-times', d);         // {times}
+export const saveExerciseTimes = (d) => IS_ELECTRON ? local.saveExerciseTimes(d) : post('/perfect/api/save-exercise-times', d);
 
 // Settings / Profile
-export const saveProfile = (d) => post('/perfect/api/onboarding', d);       // {age, gender, weight_kg, height_cm, target_weight_kg, goal, activity_level, mobility_note, food_prefs}
+export const saveProfile = (d) => IS_ELECTRON ? local.saveProfile(d) : post('/perfect/api/onboarding', d);
 export const changeEmail = (d) => post('/perfect/api/account/email', d);     // {email}
 
-// Daily logs sync (persists across devices/browsers)
-export const fetchLogs = ()      => get('/perfect/api/daily-logs');
-export const syncLogs  = (logs)  => post('/perfect/api/daily-logs', { logs });
+// Daily logs (local on desktop, server-synced on web)
+export const fetchLogs = ()      => IS_ELECTRON ? local.fetchLogs()      : get('/perfect/api/daily-logs');
+export const syncLogs  = (logs)  => IS_ELECTRON ? local.syncLogs(logs)   : post('/perfect/api/daily-logs', { logs });
 
 // Email / reminders
 export const forgotPassword  = (email)                       => post('/api/v1/forgot-password', { email });
