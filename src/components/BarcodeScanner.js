@@ -174,37 +174,56 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
     };
   }, [visible, restartKey]);
 
-  // Open Food Facts → AI fallback
+  // AI-first barcode lookup — AI identifies the product by barcode, then OFF fills in verified nutrition numbers
   async function doLookup(code) {
     setPhase('loading');
-    setHint('Found barcode ' + code + ' — looking up product…');
-    try {
-      const p = await offLookup(code);
-      if (p?.name) { setProduct(p); setPhase('result'); return; }
-    } catch {}
-    // Not found in OFF — ask AI by barcode number
-    setHint('Not in database, asking AI…');
+    setHint('Found barcode ' + code + ' — identifying product…');
+
+    // Step 1: Ask AI to identify the product by barcode number
+    let aiResult = null;
     try {
       const data = await generalAiChat([{
         role: 'user',
-        content: `The barcode number is ${code}. Do you recognise this food product? If yes, respond ONLY with valid JSON:\n{"name":"<product name>","brand":"<brand>","calories":<kcal per 100g>,"protein":<g>,"carbs":<g>,"fat":<g>,"serving":"100g"}\nIf you do not recognise this barcode at all, respond ONLY with: {"unknown":true}`,
+        content: `Barcode: ${code}\nIdentify this food product and provide its nutritional data. Respond ONLY with valid JSON — no extra text:\n{"name":"<exact product name>","brand":"<brand name>","calories":<kcal per 100g>,"protein":<g per 100g>,"carbs":<g per 100g>,"fat":<g per 100g>,"serving":"<serving size>"}\nIf you truly cannot identify this barcode, respond ONLY with: {"unknown":true}`,
       }]);
       const parsed = parseAIJson(data.reply || '');
-      if (parsed.unknown) { setPhase('error'); setErrorMsg(randomQuip()); return; }
+      if (!parsed.unknown && parsed.name) aiResult = parsed;
+    } catch {}
+
+    // Step 2: Try Open Food Facts for verified nutrition numbers (name may be wrong in OFF)
+    let offResult = null;
+    try {
+      offResult = await offLookup(code);
+    } catch {}
+
+    // Step 3: Merge — trust AI for the name/brand, use OFF numbers if they look real (calories > 0)
+    if (aiResult) {
+      const calories = (offResult?.calories > 0) ? offResult.calories : (aiResult.calories || 0);
+      const protein  = (offResult?.calories > 0) ? (offResult.protein  || aiResult.protein  || 0) : (aiResult.protein  || 0);
+      const carbs    = (offResult?.calories > 0) ? (offResult.carbs    || aiResult.carbs    || 0) : (aiResult.carbs    || 0);
+      const fat      = (offResult?.calories > 0) ? (offResult.fat      || aiResult.fat      || 0) : (aiResult.fat      || 0);
       setProduct({
-        name:     parsed.name     || 'Product ' + code,
-        brand:    parsed.brand    || '',
-        calories: parsed.calories || 0,
-        protein:  parsed.protein  || 0,
-        carbs:    parsed.carbs    || 0,
-        fat:      parsed.fat      || 0,
-        serving:  parsed.serving  || '100g',
+        name:     aiResult.name    || 'Product ' + code,
+        brand:    aiResult.brand   || offResult?.brand || '',
+        calories,
+        protein,
+        carbs,
+        fat,
+        serving:  offResult?.serving || aiResult.serving || '100g',
       });
       setPhase('result');
-    } catch {
-      setPhase('error');
-      setErrorMsg('Could not identify this product. Try entering the barcode manually.');
+      return;
     }
+
+    // Step 4: AI didn't recognise it — fall back to OFF result if we have one
+    if (offResult?.name) {
+      setProduct(offResult);
+      setPhase('result');
+      return;
+    }
+
+    setPhase('error');
+    setErrorMsg(randomQuip());
   }
 
   // AI analyses a base64 image — always extracts food data, no rejection gate
@@ -219,13 +238,11 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
       }]);
       const parsed = parseAIJson(data.reply || '');
 
-      // If AI read a barcode, cross-check with Open Food Facts for verified data
+      // If AI read a barcode from the image, use doLookup to get AI-verified name + OFF nutrition
       if (parsed.barcode && parsed.barcode.length > 6) {
-        setHint('Found barcode ' + parsed.barcode + ' — verifying with database…');
-        try {
-          const off = await offLookup(parsed.barcode);
-          if (off?.name) { setProduct(off); setPhase('result'); return; }
-        } catch {}
+        setHint('Found barcode ' + parsed.barcode + ' — verifying…');
+        await doLookup(parsed.barcode);
+        return;
       }
 
       setProduct({
