@@ -207,25 +207,19 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
     }
   }
 
-  // AI analyses a base64 image — identifies barcode, food, or meal
+  // AI analyses a base64 image — always extracts food data, no rejection gate
   async function analyseBase64Image(base64) {
     setPhase('loading');
-    setHint('AI is analysing the image…');
+    setHint('AI is reading the image…');
     try {
       const data = await generalAiChat([{
         role: 'user',
-        content: 'Look at this image carefully. First decide: does it show a barcode, a packaged food product, or a meal?\n\nIf it is none of these (just a random object, person, scenery, text, etc.) respond ONLY with: {"not_food":true}\n\nOtherwise respond ONLY with valid JSON — no extra text, no markdown:\n{"barcode":"<barcode number or empty string>","name":"<product or food name>","brand":"<brand or empty>","calories":<kcal per 100g or for the portion>,"protein":<g>,"carbs":<g>,"fat":<g>,"serving":"<serving size or 100g>"}',
+        content: 'This is a photo of a food product, barcode, or meal. Extract the nutritional information and respond ONLY with valid JSON — no extra text, no markdown:\n{"barcode":"<barcode number if visible, or empty string>","name":"<food or product name>","brand":"<brand if visible, or empty string>","calories":<kcal per 100g>,"protein":<g per 100g>,"carbs":<g per 100g>,"fat":<g per 100g>,"serving":"<serving size or 100g>"}\nIf you can see a barcode number, read it precisely and include it. Use the packaging text for accurate values. If it is a meal with no label, estimate nutrition for the visible portion.',
         images: [base64],
       }]);
       const parsed = parseAIJson(data.reply || '');
 
-      if (parsed.not_food) {
-        setPhase('error');
-        setErrorMsg("That doesn't look like a barcode or food. Try a clearer photo of a product or meal.");
-        return;
-      }
-
-      // AI found a barcode — try Open Food Facts first for verified data
+      // If AI read a barcode, cross-check with Open Food Facts for verified data
       if (parsed.barcode && parsed.barcode.length > 6) {
         setHint('Found barcode ' + parsed.barcode + ' — verifying with database…');
         try {
@@ -234,7 +228,6 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
         } catch {}
       }
 
-      // Use AI's own nutritional data
       setProduct({
         name:     parsed.name     || 'Unknown product',
         brand:    parsed.brand    || '',
@@ -247,7 +240,7 @@ export default function BarcodeScanner({ visible, onClose, onAdd }) {
       setPhase('result');
     } catch {
       setPhase('error');
-      setErrorMsg('Could not analyse the image. Try a clearer photo with good lighting.');
+      setErrorMsg('Could not read the image. Try a clearer photo or enter the barcode manually.');
     }
   }
 
