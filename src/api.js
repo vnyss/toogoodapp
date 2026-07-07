@@ -160,8 +160,16 @@ export const watchDisconnectGoogleFit = ()           => req('/api/v1/integration
 export const watchDisconnectGarmin    = ()           => req('/api/v1/integrations/garmin/disconnect',     { method: 'DELETE' });
 export const watchData                = (start, end) => get(`/api/v1/integrations/data?start=${start}&end=${end}`);
 
-// Barcode lookup via Open Food Facts (no API key needed)
+// Barcode lookup — routes through backend which tries local cache → Open Food Facts → AI.
+// Falls back to direct OFF call if not on a network that can reach the backend.
 export async function lookupBarcode(code) {
+  // Try backend first (cache + OFF + AI, result stored for future scans)
+  try {
+    const data = await req(`/api/v1/barcode/${encodeURIComponent(code)}`);
+    if (data && data.name && !data.error) return data;
+  } catch {}
+
+  // Direct OFF fallback (in case backend is unreachable)
   const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
   if (!res.ok) throw new Error('Not found');
   const data = await res.json();
