@@ -273,9 +273,42 @@ function RecipeResult({ recipe, onSave, onBack, mc, accentColor, st }) {
           </View>
         ) : null}
 
-        {/* Save */}
+        {/* Save + Share row */}
         <TouchableOpacity style={st.saveBtn} onPress={onSave}>
           <Text style={st.saveTxt}>SAVE TO MY RECIPES</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[st.saveBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: accentColor + '60', marginTop: 10 }]}
+          onPress={() => {
+            const lines = [
+              `🍽️ ${title}`,
+              meta ? meta : '',
+              '',
+              '📋 Ingredients:',
+              ...ingredients.map(i => `• ${i}`),
+              '',
+              '👨‍🍳 Method:',
+              ...steps.map((s, i) => `${i + 1}. ${s}`),
+              '',
+              tip ? `💡 Chef's tip: ${tip}` : '',
+              '',
+              '📊 Nutrition:',
+              ...nutrition,
+              '',
+              '— Made with Too Good',
+            ].filter(l => l !== undefined).join('\n').trim();
+
+            if (typeof navigator !== 'undefined' && navigator.share) {
+              navigator.share({ title: title, text: lines }).catch(() => {});
+            } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+              navigator.clipboard.writeText(lines).then(() => {
+                alert('Recipe copied to clipboard!');
+              }).catch(() => {});
+            }
+          }}
+        >
+          <Text style={[st.saveTxt, { color: accentColor }]}>SHARE RECIPE</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

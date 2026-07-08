@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
 import Svg, { Rect, Line, Path, Text as SvgText, Circle } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { F } from '../theme';
@@ -7,6 +7,9 @@ import { useTheme } from '../ThemeContext';
 import { getUser } from '../auth';
 import { EXERCISES } from '../data/exercises';
 import GymOnboardingModal, { gymProfileKey, LIFTS } from '../components/GymOnboardingModal';
+import { IS_ELECTRON } from '../config';
+import * as local from '../localStore';
+import { API_BASE } from '../config';
 
 function estimated1RM(w, r) { return r === 1 ? w : Math.round(w * (1 + r / 30)); }
 function weekOf(iso) {
@@ -44,8 +47,73 @@ function BarChart({ data, color, height = 80 }) {
 // Muscle group heatmap (simplified frequency grid)
 const MUSCLE_LIST = ['Chest','Back','Shoulders','Biceps','Triceps','Core','Quads','Hamstrings','Glutes','Calves'];
 
+// ─── Inline PIN gate (reuses diary PIN) ─────────────────────────────────────
+function GymPinRow({ onComplete }) {
+  const containerRef = useRef(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const container = containerRef.current;
+    if (!container) return;
+    container.innerHTML = '';
+    container.style.cssText = 'display:flex;gap:12px;justify-content:center;align-items:center;';
+    const inputs = [], vals = ['', '', '', ''];
+    function tryComplete() {
+      if (vals.every(v => v !== '')) onComplete(vals.join(''), () => {
+        vals.forEach((_, i) => { vals[i] = ''; inputs[i].value = ''; });
+        inputs[0]?.focus();
+      });
+    }
+    const dotsRow = document.createElement('div');
+    dotsRow.style.cssText = 'display:flex;gap:10px;margin-bottom:12px;position:absolute;top:-28px;left:50%;transform:translateX(-50%);';
+    const dots = [];
+    for (let i = 0; i < 4; i++) {
+      const dot = document.createElement('div');
+      dot.style.cssText = 'width:10px;height:10px;border-radius:50%;border:2px solid rgba(201,168,76,0.38);background:transparent;transition:background 0.1s,border-color 0.1s;';
+      dots.push(dot); dotsRow.appendChild(dot);
+    }
+    function updateDot(idx, filled, err) {
+      if (!dots[idx]) return;
+      const c = err ? '#CF6679' : '#C9A84C';
+      const b = err ? 'rgba(207,102,121,0.38)' : 'rgba(201,168,76,0.38)';
+      dots[idx].style.background = filled ? c : 'transparent';
+      dots[idx].style.borderColor = filled ? c : b;
+    }
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;padding-top:28px;';
+    wrap.appendChild(dotsRow);
+    for (let i = 0; i < 4; i++) {
+      const inp = document.createElement('input');
+      inp.type = 'password'; inp.maxLength = 1; inp.inputMode = 'numeric';
+      inp.style.cssText = 'width:56px;height:68px;background:#161616;border:2px solid rgba(201,168,76,0.12);color:#EDE3CE;font-family:\'JetBrains Mono\',monospace;font-size:32px;text-align:center;outline:none;caret-color:transparent;box-sizing:border-box;';
+      inp.onfocus = () => { inp.style.borderColor = '#C9A84C'; };
+      inp.onblur  = () => { inp.style.borderColor = vals[i] ? 'rgba(201,168,76,0.38)' : 'rgba(201,168,76,0.12)'; };
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Backspace') {
+          if (!vals[i] && i > 0) { vals[i-1]=''; inputs[i-1].value=''; updateDot(i-1,false); inputs[i-1].focus(); }
+          else { vals[i]=''; inp.value=''; updateDot(i,false); }
+          e.preventDefault();
+        }
+      });
+      inp.addEventListener('input', () => {
+        const digit = inp.value.replace(/\D/g,'').slice(-1);
+        inp.value = digit; vals[i] = digit; updateDot(i, !!digit);
+        if (digit && i < 3) inputs[i+1].focus();
+        tryComplete();
+      });
+      wrap.appendChild(inp); inputs.push(inp);
+    }
+    container.appendChild(wrap);
+    setTimeout(() => inputs[0]?.focus(), 120);
+    return () => { container.innerHTML = ''; };
+  }, []);
+  return <View ref={containerRef} style={{ flexDirection: 'row', justifyContent: 'center', height: 124, alignItems: 'flex-end' }} />;
+}
+
 export default function GymProgressScreen() {
   const { mc, accentColor } = useTheme();
+  const [locked,    setLocked]    = useState(null); // null=checking, true=locked, false=open
+  const [pinHint,   setPinHint]   = useState('Enter your PIN to access Workout Journal');
+  const [pinErr,    setPinErr]    = useState(false);
   const [workouts,  setWorkouts]  = useState([]);
   const [prs,       setPrs]       = useState({});
   const [activeTab, setActiveTab] = useState('streak');
@@ -53,6 +121,47 @@ export default function GymProgressScreen() {
   const [editingProfile,setEditingProfile]= useState(false);
 
   useEffect(() => {
+    checkLock();
+  }, []);
+
+  async function checkLock() {
+    try {
+      let lock = IS_ELECTRON ? (await local.getDiaryLock()) : await (async () => {
+        const t = await import('../auth').then(m => m.getToken());
+        const h = t ? { Authorization: 'Bearer ' + t } : {};
+        const r = await fetch(API_BASE + '/perfect/api/diary/lock', { headers: h });
+        return r.json();
+      })();
+      if (lock?.setup_done && lock?.enabled) { setLocked(true); return; }
+    } catch {}
+    setLocked(false);
+    loadGymData();
+  }
+
+  async function handlePin(pin, reset) {
+    let valid = false;
+    try {
+      if (IS_ELECTRON) {
+        const r = await local.setDiaryLock({ action: 'verify', pin });
+        valid = !!r?.valid;
+      } else {
+        const t = await import('../auth').then(m => m.getToken());
+        const h = { 'Content-Type': 'application/json', ...(t ? { Authorization: 'Bearer ' + t } : {}) };
+        const r = await fetch(API_BASE + '/perfect/api/diary/lock', {
+          method: 'POST', headers: h, body: JSON.stringify({ action: 'verify', pin }),
+        });
+        const d = await r.json();
+        valid = !!d?.valid;
+      }
+    } catch {}
+    if (valid) { setLocked(false); loadGymData(); }
+    else {
+      setPinErr(true); setPinHint('Wrong PIN — try again');
+      setTimeout(() => { reset?.(); setPinErr(false); setPinHint('Enter your PIN to access Workout Journal'); }, 900);
+    }
+  }
+
+  function loadGymData() {
     getUser().then(async u => {
       const raw = await AsyncStorage.getItem(`tg_gym_${u}`);
       if (raw) {
@@ -63,7 +172,7 @@ export default function GymProgressScreen() {
       const praw = await AsyncStorage.getItem(gymProfileKey(u));
       if (praw) setGymProfile(JSON.parse(praw));
     });
-  }, []);
+  }
 
   // Streak calculation (consecutive weeks)
   const streakWeeks = (() => {
@@ -137,6 +246,27 @@ export default function GymProgressScreen() {
     { key: 'prs',     label: 'Personal Records' },
     { key: 'muscles', label: 'Muscle Map' },
   ];
+
+  if (locked === null) {
+    return <View style={{ flex: 1, backgroundColor: mc.bg }} />;
+  }
+
+  if (locked) {
+    return (
+      <View style={{ flex: 1, backgroundColor: mc.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <Text style={{ fontFamily: F.serif, fontSize: 22, color: mc.text, marginBottom: 6, textAlign: 'center' }}>
+          Workout Journal
+        </Text>
+        <Text style={{ fontFamily: F.mono, fontSize: 10, color: mc.text3, letterSpacing: 2, marginBottom: 40, textAlign: 'center' }}>
+          PASSWORD PROTECTED
+        </Text>
+        <Text style={{ fontFamily: F.mono, fontSize: 12, color: pinErr ? '#CF6679' : mc.text3, marginBottom: 24, textAlign: 'center' }}>
+          {pinHint}
+        </Text>
+        <GymPinRow onComplete={handlePin} />
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={s.root}>

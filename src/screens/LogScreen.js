@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, Modal, ActivityIndicator, Platform, Image,
+  Animated, Easing,
 } from 'react-native';
 import Svg, { Path, Line } from 'react-native-svg';
 import { C, F } from '../theme';
@@ -161,6 +162,44 @@ function WebSlider({ min, max, value, onChange, accentColor: accent = C.gold, bo
     );
   }
   return <View style={st.sliderTrack}>{dots}</View>;
+}
+
+// ─── Animated sound wave (mic listening indicator) ──────────────────────────
+function MicSoundWave({ active, color }) {
+  const bars = [
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+  ];
+  useEffect(() => {
+    if (!active) {
+      bars.forEach(b => { b.stopAnimation(); b.setValue(0.3); });
+      return;
+    }
+    const anims = bars.map((b, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 80),
+          Animated.timing(b, { toValue: 1,    duration: 280 + i * 40, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+          Animated.timing(b, { toValue: 0.15, duration: 280 + i * 40, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+        ])
+      )
+    );
+    anims.forEach(a => a.start());
+    return () => anims.forEach(a => a.stop());
+  }, [active]);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, height: 24 }}>
+      {bars.map((b, i) => (
+        <Animated.View key={i} style={{
+          width: 3, height: 20, backgroundColor: color || '#C9A84C',
+          transform: [{ scaleY: b }],
+        }} />
+      ))}
+    </View>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -850,6 +889,16 @@ export default function LogScreen({ navigation }) {
             <Text style={st.asstHint}>
               Tap mic and speak naturally, or type below. I'll update the form automatically.
             </Text>
+
+            {/* Mic soundwave + live transcript */}
+            {asstMicOn && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingBottom: 8 }}>
+                <MicSoundWave active={true} color={accentColor} />
+                <Text style={{ fontFamily: F.mono, fontSize: 11, color: accentColor, flex: 1 }} numberOfLines={2}>
+                  {asstInp || 'Listening…'}
+                </Text>
+              </View>
+            )}
 
             {/* Input row */}
             <View style={st.asstInputRow}>

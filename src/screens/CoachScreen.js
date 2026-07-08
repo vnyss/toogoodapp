@@ -847,6 +847,14 @@ export default function CoachScreen({ navigation }) {
           {transcript || ' '}
         </Text>
 
+        {/* Sound wave when user mic is listening */}
+        {isListening && (
+          <View style={st.speakingWaveRow}>
+            <SoundWave active={true} />
+            <Text style={st.speakingLabel}>Listening…</Text>
+          </View>
+        )}
+
         {/* Sound wave when coach is speaking (not replaying specific bubble) */}
         {speaking && !muted && replayIdx === null && (
           <View style={st.speakingWaveRow}>

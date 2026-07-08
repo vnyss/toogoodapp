@@ -118,16 +118,8 @@ export default function ScoreScreen({ navigation }) {
   const [lb,      setLb]      = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Award daily login XP then load score + leaderboard (mirrors the HTML script order)
-    const token = getToken ? getToken() : Promise.resolve(null);
-    Promise.resolve(token).then(() => {
-      // award login xp silently
-      import('../api').then(({ awardXP }) => {
-        if (awardXP) awardXP('login').catch(() => {});
-      }).catch(() => {});
-    }).catch(() => {});
-
+  function loadData() {
+    setLoading(true);
     Promise.all([getScore(), leaderboard()])
       .then(([s, l]) => {
         setScore(s?.ok ? s : null);
@@ -135,6 +127,18 @@ export default function ScoreScreen({ navigation }) {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    // Award daily login XP silently
+    const token = getToken ? getToken() : Promise.resolve(null);
+    Promise.resolve(token).then(() => {
+      import('../api').then(({ awardXP }) => {
+        if (awardXP) awardXP('login').catch(() => {});
+      }).catch(() => {});
+    }).catch(() => {});
+
+    loadData();
   }, []);
 
   const level      = score?.level ?? 0;
@@ -589,7 +593,21 @@ export default function ScoreScreen({ navigation }) {
         <ActivityIndicator color={accentColor} style={{ marginTop: 40 }} />
       )}
 
-      {!loading && (
+      {!loading && !score && (
+        <View style={{ alignItems: 'center', paddingTop: 60, gap: 16 }}>
+          <Text style={{ fontFamily: F.mono, fontSize: 13, color: mc.text3, textAlign: 'center' }}>
+            Could not load your score.{'\n'}Check your connection and try again.
+          </Text>
+          <TouchableOpacity
+            onPress={loadData}
+            style={{ borderWidth: 1, borderColor: accentColor, paddingHorizontal: 20, paddingVertical: 10 }}
+          >
+            <Text style={{ fontFamily: F.mono, fontSize: 12, color: accentColor, letterSpacing: 2 }}>RETRY</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!loading && score && (
         <>
           {/* ── Level Hero ── */}
           <View style={st.levelHero}>
@@ -626,7 +644,7 @@ export default function ScoreScreen({ navigation }) {
 
             {/* Level info */}
             <View style={st.levelInfo}>
-              <Text style={st.levelTitle}>{score ? levelTitle(level) : 'Loading...'}</Text>
+              <Text style={st.levelTitle}>{score ? levelTitle(level) : '—'}</Text>
               <Text style={st.levelSub}>
                 {score
                   ? (level >= maxLevel
