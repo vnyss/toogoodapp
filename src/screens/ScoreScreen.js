@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
 } from 'react-native';
@@ -117,12 +117,14 @@ export default function ScoreScreen({ navigation }) {
   const [score,   setScore]   = useState(null);
   const [lb,      setLb]      = useState(null);
   const [loading, setLoading] = useState(true);
+  const didLoad = useRef(false);
 
   function loadData() {
     setLoading(true);
     Promise.all([getScore(), leaderboard()])
       .then(([s, l]) => {
-        setScore(s?.ok ? s : null);
+        if (s?.ok) { setScore(s); didLoad.current = true; }
+        else setScore(null);
         setLb(l?.ok ? l : null);
       })
       .catch(() => {})
@@ -139,6 +141,9 @@ export default function ScoreScreen({ navigation }) {
     }).catch(() => {});
 
     loadData();
+    // Auto-retry once after 3s in case Flask needs a moment to start
+    const t = setTimeout(() => { if (!didLoad.current) loadData(); }, 3000);
+    return () => clearTimeout(t);
   }, []);
 
   const level      = score?.level ?? 0;

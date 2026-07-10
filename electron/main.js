@@ -123,13 +123,13 @@ function setupAutoUpdater(win) {
 }
 
 app.whenReady().then(() => {
-  // Grant camera/microphone permission automatically — needed for barcode scanner
+  // Grant camera/microphone/geolocation permissions automatically
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    const allow = ['media', 'camera', 'microphone', 'display-capture', 'notifications'];
+    const allow = ['media', 'camera', 'microphone', 'display-capture', 'notifications', 'geolocation'];
     callback(allow.includes(permission));
   });
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => {
-    const allow = ['media', 'camera', 'microphone', 'display-capture', 'notifications'];
+    const allow = ['media', 'camera', 'microphone', 'display-capture', 'notifications', 'geolocation'];
     return allow.includes(permission);
   });
 
