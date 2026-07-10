@@ -49,10 +49,16 @@ function createWindow() {
 
   win.setMenuBarVisibility(false);
 
+  const REMOTE_URL = 'https://visionary-palmier-db40fb.netlify.app';
+
   if (isDev) {
     win.loadURL('http://localhost:8081');
   } else {
-    win.loadURL('app://localhost/');
+    // Try loading from Netlify (instant updates without reinstall).
+    // Fall back to bundled local files if offline.
+    win.loadURL(REMOTE_URL).catch(() => {
+      win.loadURL('app://localhost/');
+    });
   }
 
   win.webContents.setWindowOpenHandler(({ url }) => {

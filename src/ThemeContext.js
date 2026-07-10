@@ -12,7 +12,7 @@ export const ACCENT_MAP = {
   teal:   { gold: '#4CB8B8', goldH: '#70D4D4', goldDim: 'rgba(76,184,184,0.07)', border: 'rgba(76,184,184,0.12)',  borderH: 'rgba(76,184,184,0.38)' },
 };
 
-const FS_MAP     = { xs: 10, sm: 12, md: 14, lg: 16, xl: 18 };
+const FS_MAP     = { xs: 12, sm: 13, md: 15, lg: 17, xl: 19 };
 const RADIUS_MAP = { sharp: 0, soft: 6, rounded: 14 };
 
 const DARK_MC = {
@@ -21,8 +21,8 @@ const DARK_MC = {
   surface: '#080808',
   elevated:'#101010',
   text:    '#E8E0D0',
-  text2:   '#8A7A68',
-  text3:   '#3E3228',
+  text2:   '#B0A090',
+  text3:   '#7A6858',
 };
 
 const LIGHT_MC = {
@@ -47,7 +47,7 @@ const defaultTheme = {
   accentColor: '#4CAF7C',
   accentDim: 'rgba(76,175,124,0.1)',
   mc: { ...DARK_MC, border: 'rgba(76,175,124,0.12)', borderH: 'rgba(76,175,124,0.38)', goldDim: 'rgba(76,175,124,0.07)' },
-  fontSize: 14,
+  fontSize: 15,
   borderRadius: 6,
   weatherEffects: true,
   setTheme: () => {},
@@ -75,7 +75,7 @@ function keys(username) {
 export function ThemeProvider({ username = '', children }) {
   const [mode,           setMode]           = useState('dark');
   const [accent,         setAccent]         = useState('green');
-  const [fontSize,       setFontSize]       = useState(14);
+  const [fontSize,       setFontSize]       = useState(15);
   const [borderRadius,   setBorderRadius]   = useState(6);
   const [weatherEffects, setWeatherEffects] = useState(true);
 

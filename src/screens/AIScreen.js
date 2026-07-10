@@ -1283,7 +1283,6 @@ export default function AIScreen({ navigation }) {
     setMessages([]);
     setShowRoast(false);
     setShowRegen(false);
-    setWizardShown(false);
   }
 
   function clearChat() {
