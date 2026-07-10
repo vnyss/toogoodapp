@@ -260,11 +260,7 @@ function LoginView({ onSuccess, onSignup, onForgot }) {
         <Text style={st.submitTxt}>{loading ? 'Logging in…' : 'Log in'}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={st.switchLink} onPress={() => {
-        if (typeof window !== 'undefined') {
-          window.open('https://vnyss.github.io/toogood-website/signup.html', '_blank');
-        }
-      }}>
+      <TouchableOpacity style={st.switchLink} onPress={onSignup}>
         <Text style={st.switchTxt}>No account? <Text style={{ color: GOLD }}>Create one</Text></Text>
       </TouchableOpacity>
 
