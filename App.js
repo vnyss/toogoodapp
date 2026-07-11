@@ -252,11 +252,12 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
 
         {/* ── Navigation (always visible, no collapse) ── */}
         <Text style={[sb.sectionLabel, { color: mc.text3 }]}>Navigation</Text>
-        <NavItem navKey="dashboard" label="Dashboard" iconName="dashboard" active={screen === 'dashboard'} onPress={navigate} />
-        <NavItem navKey="ai"        label="AI Assistant" iconName="ai"      active={screen === 'ai'}        onPress={navigate} />
-        <NavItem navKey="log"       label="Log Today"  iconName="log"       active={screen === 'log'}       onPress={navigate} />
-        <NavItem navKey="calendar"  label="Calendar"   iconName="calendar"  active={screen === 'calendar'}  onPress={navigate} />
-        <NavItem navKey="adapt"     label="My Plan"    iconName="adapt"     active={screen === 'adapt'}     onPress={navigate} />
+        <NavItem navKey="dashboard" label="Dashboard"      iconName="dashboard" active={screen === 'dashboard'} onPress={navigate} />
+        <NavItem navKey="ai"        label="AI Assistant"   iconName="ai"        active={screen === 'ai'}        onPress={navigate} />
+        <NavItem navKey="recipe"    label="Recipe Builder" iconName="recipe"    active={screen === 'recipe'}    onPress={navigate} />
+        <NavItem navKey="log"       label="Log Today"      iconName="log"       active={screen === 'log'}       onPress={navigate} />
+        <NavItem navKey="calendar"  label="Calendar"       iconName="calendar"  active={screen === 'calendar'}  onPress={navigate} />
+        <NavItem navKey="adapt"     label="My Plan"        iconName="adapt"     active={screen === 'adapt'}     onPress={navigate} />
 
         {/* ── Fitness ── */}
         <SectionHeader label="Fitness" open={open.fitness} onToggle={() => toggle('fitness')} hasActive={inSection(['coach','schedule','exercise','diary','score'])} />
@@ -285,11 +286,11 @@ function Sidebar({ screen, navigate, username, onLogout, userGender }) {
         )}
 
         {/* ── Nutrition ── */}
-        <SectionHeader label="Nutrition" open={open.nutrition} onToggle={() => toggle('nutrition')} hasActive={inSection(['nutrients','mealplanning','recipe','mealplan','goalsprogress','smarttargets','fasting','transformation'])} />
+        <SectionHeader label="Nutrition" open={open.nutrition} onToggle={() => toggle('nutrition')} hasActive={inSection(['nutrients','mealplanning','mealplan','goalsprogress','smarttargets','fasting','transformation'])} />
         {open.nutrition && (
           <>
             <NavItem navKey="nutrients"     label="Nutrients"       iconName="nutrients"     active={screen === 'nutrients'}      onPress={navigate} />
-            <NavItem navKey="mealplanning"  label="Meal Planning"   iconName="mealplan"      active={screen === 'mealplanning' || screen === 'recipe' || screen === 'mealplan'} onPress={navigate} />
+            <NavItem navKey="mealplanning"  label="Meal Planning"   iconName="mealplan"      active={screen === 'mealplanning' || screen === 'mealplan'} onPress={navigate} />
             <NavItem navKey="goalsprogress" label="Goals"            iconName="smarttargets" active={screen === 'goalsprogress' || screen === 'smarttargets' || screen === 'transformation'} onPress={navigate} />
             <NavItem navKey="fasting"       label="Fasting Tracker" iconName="fasting"       active={screen === 'fasting'}        onPress={navigate} />
           </>
